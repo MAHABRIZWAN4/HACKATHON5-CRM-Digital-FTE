@@ -1,0 +1,33 @@
+"""Health check endpoint."""
+
+from fastapi import APIRouter, status
+from fastapi.responses import JSONResponse
+from app.db.connection import get_db_pool
+
+router = APIRouter(tags=["health"])
+
+
+@router.get("/health", status_code=status.HTTP_200_OK)
+async def health_check():
+    """Health check endpoint that verifies database connectivity."""
+    try:
+        # Check database connection
+        db_pool = get_db_pool()
+        await db_pool.fetchval("SELECT 1")
+
+        return JSONResponse(
+            status_code=status.HTTP_200_OK,
+            content={
+                "status": "healthy",
+                "database": "connected"
+            }
+        )
+    except Exception as e:
+        return JSONResponse(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            content={
+                "status": "unhealthy",
+                "database": "disconnected",
+                "error": str(e)
+            }
+        )

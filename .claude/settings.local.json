@@ -1,0 +1,29 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(python:*)",
+      "Bash(pip install:*)",
+      "Bash(pytest:*)",
+      "Bash(pip list:*)",
+      "Bash(PGPASSWORD=postgres \"/c/Program Files/PostgreSQL/16/bin/psql.exe\" -U postgres -c \"DROP DATABASE IF EXISTS fte_db; CREATE DATABASE fte_db;\")",
+      "Bash(PGPASSWORD=postgres \"/c/Program Files/PostgreSQL/16/bin/psql.exe\" -U postgres -c \"DROP DATABASE fte_db;\")",
+      "Bash(PGPASSWORD=postgres \"/c/Program Files/PostgreSQL/16/bin/psql.exe\" -U postgres -c \"CREATE DATABASE fte_db;\")",
+      "Bash(curl:*)",
+      "Bash(psql:*)",
+      "Bash(docker exec fte-postgres:*)",
+      "Bash(netstat -ano)",
+      "Bash(find . -name \"*.py\" -type f -exec grep -l \"standalone\\\\|test.*support\\\\|manual.*test\" {} \\\\;)",
+      "Bash(uvicorn app.main:app --host 0.0.0.0 --port 8001 --reload)",
+      "Bash(npm install:*)",
+      "Bash(npm run:*)",
+      "Bash(node node_modules/next/dist/bin/next dev -p 3000)",
+      "Bash(npm list:*)",
+      "Bash(npm cache:*)",
+      "Bash(npm uninstall:*)",
+      "Bash(npx tailwindcss:*)",
+      "Bash(npx tsc:*)",
+      "Bash(rm:*)",
+      "Bash(findstr :3000)"
+    ]
+  }
+}

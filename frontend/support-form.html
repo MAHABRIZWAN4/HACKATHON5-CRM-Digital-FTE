@@ -1,0 +1,230 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Support Request Form</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        body {
+            font-family: Arial, sans-serif;
+            background-color: #f5f5f5;
+            padding: 20px;
+        }
+        .container {
+            max-width: 600px;
+            margin: 50px auto;
+            background: white;
+            padding: 30px;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        h1 {
+            text-align: center;
+            color: #333;
+            margin-bottom: 30px;
+        }
+        .form-group {
+            margin-bottom: 20px;
+        }
+        label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: bold;
+            color: #555;
+        }
+        input, select, textarea {
+            width: 100%;
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            font-size: 14px;
+        }
+        textarea {
+            resize: vertical;
+            min-height: 120px;
+        }
+        button {
+            width: 100%;
+            padding: 12px;
+            background-color: #007bff;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            font-size: 16px;
+            font-weight: bold;
+            cursor: pointer;
+            transition: background-color 0.3s;
+        }
+        button:hover {
+            background-color: #0056b3;
+        }
+        button:disabled {
+            background-color: #6c757d;
+            cursor: not-allowed;
+        }
+        .alert {
+            padding: 15px;
+            margin-bottom: 20px;
+            border-radius: 5px;
+            display: none;
+        }
+        .alert.success {
+            background-color: #d4edda;
+            border: 1px solid #c3e6cb;
+            color: #155724;
+        }
+        .alert.error {
+            background-color: #f8d7da;
+            border: 1px solid #f5c6cb;
+            color: #721c24;
+        }
+        .alert.show {
+            display: block;
+        }
+        .info-box {
+            margin-top: 30px;
+            padding: 15px;
+            background-color: #f8f9fa;
+            border-radius: 5px;
+            font-size: 14px;
+        }
+        .info-box h3 {
+            margin-bottom: 10px;
+            color: #333;
+        }
+        .info-box p {
+            margin: 5px 0;
+            color: #666;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Support Request Form</h1>
+
+        <div id="successAlert" class="alert success">
+            <strong>Success!</strong> Your support request has been submitted.<br>
+            <strong>Ticket ID:</strong> <span id="ticketId"></span>
+        </div>
+
+        <div id="errorAlert" class="alert error">
+            <strong>Error:</strong> <span id="errorMessage"></span>
+        </div>
+
+        <form id="supportForm">
+            <div class="form-group">
+                <label for="name">Name *</label>
+                <input type="text" id="name" name="name" required>
+            </div>
+
+            <div class="form-group">
+                <label for="email">Email *</label>
+                <input type="email" id="email" name="email" required>
+            </div>
+
+            <div class="form-group">
+                <label for="subject">Subject *</label>
+                <input type="text" id="subject" name="subject" required>
+            </div>
+
+            <div class="form-group">
+                <label for="category">Category *</label>
+                <select id="category" name="category" required>
+                    <option value="general">General Inquiry</option>
+                    <option value="technical">Technical Support</option>
+                    <option value="billing">Billing Issue</option>
+                    <option value="feature">Feature Request</option>
+                    <option value="bug">Bug Report</option>
+                </select>
+            </div>
+
+            <div class="form-group">
+                <label for="message">Message *</label>
+                <textarea id="message" name="message" required></textarea>
+            </div>
+
+            <button type="submit" id="submitBtn">Submit Support Request</button>
+        </form>
+
+        <div class="info-box">
+            <h3>API Connection</h3>
+            <p><strong>Endpoint:</strong> http://localhost:8001/support</p>
+            <p><strong>Method:</strong> POST</p>
+            <p><strong>Status:</strong> <span id="apiStatus">Ready</span></p>
+        </div>
+    </div>
+
+    <script>
+        const form = document.getElementById('supportForm');
+        const submitBtn = document.getElementById('submitBtn');
+        const successAlert = document.getElementById('successAlert');
+        const errorAlert = document.getElementById('errorAlert');
+        const ticketIdSpan = document.getElementById('ticketId');
+        const errorMessageSpan = document.getElementById('errorMessage');
+        const apiStatus = document.getElementById('apiStatus');
+
+        form.addEventListener('submit', async (e) => {
+            e.preventDefault();
+
+            // Hide alerts
+            successAlert.classList.remove('show');
+            errorAlert.classList.remove('show');
+
+            // Disable button
+            submitBtn.disabled = true;
+            submitBtn.textContent = 'Submitting...';
+            apiStatus.textContent = 'Sending...';
+
+            // Get form data
+            const formData = {
+                name: document.getElementById('name').value,
+                email: document.getElementById('email').value,
+                subject: document.getElementById('subject').value,
+                category: document.getElementById('category').value,
+                message: document.getElementById('message').value
+            };
+
+            try {
+                const response = await fetch('http://localhost:8001/support', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify(formData)
+                });
+
+                const data = await response.json();
+
+                if (response.ok && data.status === 'success') {
+                    // Show success
+                    ticketIdSpan.textContent = data.ticket_id;
+                    successAlert.classList.add('show');
+                    apiStatus.textContent = 'Success';
+
+                    // Reset form
+                    form.reset();
+                } else {
+                    // Show error
+                    errorMessageSpan.textContent = data.message || 'Failed to submit support request';
+                    errorAlert.classList.add('show');
+                    apiStatus.textContent = 'Error';
+                }
+            } catch (error) {
+                // Network error
+                errorMessageSpan.textContent = 'Network error. Please check if the API server is running on port 8001.';
+                errorAlert.classList.add('show');
+                apiStatus.textContent = 'Connection Failed';
+            } finally {
+                // Re-enable button
+                submitBtn.disabled = false;
+                submitBtn.textContent = 'Submit Support Request';
+            }
+        });
+    </script>
+</body>
+</html>
