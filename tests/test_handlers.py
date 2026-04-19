@@ -223,9 +223,30 @@ class TestGmailHandler:
     @pytest.mark.asyncio
     async def test_send_reply(self, db_setup, monkeypatch):
         """Test sending Gmail reply."""
-        monkeypatch.setenv("GMAIL_SENDER_EMAIL", "support@example.com")
+        import os
+        monkeypatch.setenv("GMAIL_ADDRESS", "support@example.com")
+
+        # Mock os.path.exists to return True for credentials files
+        def mock_exists(path):
+            path_str = str(path)  # Convert Path objects to string
+            if 'credentials.json' in path_str or 'token.json' in path_str:
+                return True
+            # For other paths, use the original os.path.exists
+            import os as original_os
+            return original_os.path.exists(path)
+
+        monkeypatch.setattr("os.path.exists", mock_exists)
+
+        # Mock Gmail service
+        from unittest.mock import MagicMock
+        mock_service = MagicMock()
+        mock_service.users().messages().send().execute.return_value = {'id': 'msg_123'}
 
         handler = GmailHandler()
+
+        # Mock _get_gmail_service to return our mock
+        handler._get_gmail_service = MagicMock(return_value=mock_service)
+
         result = await handler.send_reply(
             "customer@example.com",
             "Re: Your ticket",

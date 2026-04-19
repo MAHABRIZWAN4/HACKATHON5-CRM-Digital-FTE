@@ -7,6 +7,7 @@ from pydantic import BaseModel, EmailStr, Field
 
 from app.db.connection import get_db_pool
 from app.handlers.gmail import gmail_handler
+from app.agent.customer_success_agent import get_agent
 
 logger = logging.getLogger(__name__)
 
@@ -36,19 +37,39 @@ class WebFormHandler:
         try:
             logger.info(f"Processing web form submission from: {form_data.email}")
 
-            # Create ticket in database
-            ticket_id = await self._create_ticket(form_data)
+            # Get agent to process the inquiry and generate solution
+            # Agent will create ticket, search KB, and send response
+            agent = get_agent()
+            agent_response = await agent.handle_customer_inquiry(
+                customer_id=form_data.email,
+                message=f"Subject: {form_data.subject}\n\nMessage: {form_data.message}",
+                channel="web_form",
+                customer_name=form_data.name
+            )
 
-            # Send confirmation email
-            await self._send_confirmation_email(form_data, ticket_id)
+            logger.info(f"Agent processed inquiry. Success: {agent_response.get('success')}")
 
-            logger.info(f"Web form submission processed successfully. Ticket ID: {ticket_id}")
+            # Get ticket_id from agent response
+            ticket_id = agent_response.get('ticket_id', 'N/A')
+
+            # If agent failed, create ticket manually as fallback
+            if not agent_response.get('success') or not ticket_id or ticket_id == 'N/A':
+                logger.warning("Agent failed or didn't create ticket - creating manually")
+                ticket_id = await self._create_ticket(form_data)
+
+                # Send basic confirmation email
+                await self._send_basic_confirmation(form_data, ticket_id)
+            else:
+                # Agent succeeded - email already sent via send_response tool
+                logger.info(f"Agent successfully processed request. Ticket: {ticket_id}")
 
             return {
                 "status": "success",
                 "channel": "web_form",
                 "ticket_id": ticket_id,
-                "message": "Support request submitted successfully"
+                "message": "Support request submitted and processed successfully",
+                "agent_response": agent_response.get('response', 'Processing your request'),
+                "tools_used": agent_response.get('tools_used', 0)
             }
 
         except Exception as e:
@@ -153,16 +174,15 @@ class WebFormHandler:
             logger.info("Transaction committed successfully")
             return str(ticket_id)
 
-    async def _send_confirmation_email(self, form_data: WebFormRequest, ticket_id: str) -> None:
+    async def _send_basic_confirmation(self, form_data: WebFormRequest, ticket_id: str) -> None:
         """
-        Send confirmation email to customer.
+        Send basic confirmation email when agent fails.
 
         Args:
             form_data: Form data
             ticket_id: Generated ticket ID
         """
         try:
-            # Map category to readable name
             category_names = {
                 "general": "General Inquiry",
                 "technical": "Technical Support",
@@ -177,25 +197,25 @@ class WebFormHandler:
                 subject=f"Re: {form_data.subject}",
                 body=f"""Hello {form_data.name},
 
-Thank you for contacting us. We have received your support request and created a ticket.
+Thank you for contacting TechCorp Support. We have received your request.
 
 Ticket ID: {ticket_id}
 Category: {category_display}
 Subject: {form_data.subject}
 
-Our support team is reviewing your request and will respond shortly. We typically reply within 24 hours.
+Our support team is reviewing your request and will respond shortly.
 
 Best regards,
 TechCorp Support Team
 
 ---
 Your message:
-{form_data.message[:200]}{'...' if len(form_data.message) > 200 else ''}
+{form_data.message}
 """
             )
-            logger.info(f"Confirmation email sent to {form_data.email}")
+            logger.info(f"Basic confirmation email sent to {form_data.email}")
         except Exception as e:
-            logger.error(f"Error sending confirmation email: {e}", exc_info=True)
+            logger.warning(f"Could not send confirmation email: {e}")
 
 
 # Singleton instance

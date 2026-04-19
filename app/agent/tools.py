@@ -137,17 +137,82 @@ async def create_ticket(
 
         # Create ticket in database
         db_pool = get_db_pool()
-        ticket_id = await db_pool.fetchval(
-            """
-            SELECT gen_random_uuid()::text
-            """
-        )
 
-        logger.info(f"Created ticket: {ticket_id}")
+        async with db_pool.acquire() as conn:
+            async with conn.transaction():
+                # Check if customer exists
+                customer_db_id = await conn.fetchval(
+                    """
+                    SELECT id FROM customers WHERE email = $1 OR phone = $1
+                    """,
+                    input_data.customer_id
+                )
+
+                # If customer doesn't exist, create one
+                if not customer_db_id:
+                    customer_db_id = await conn.fetchval(
+                        """
+                        INSERT INTO customers (email, name, created_at, updated_at)
+                        VALUES ($1, $2, NOW(), NOW())
+                        RETURNING id
+                        """,
+                        input_data.customer_id,
+                        "Customer"  # Default name
+                    )
+                    logger.info(f"Created new customer: {customer_db_id}")
+
+                # Map channel to database format
+                channel_map = {
+                    "gmail": "email",
+                    "whatsapp": "whatsapp",
+                    "web_form": "web"
+                }
+                db_channel = channel_map.get(input_data.channel.lower(), "web")
+
+                # Create conversation
+                conversation_id = await conn.fetchval(
+                    """
+                    INSERT INTO conversations (customer_id, channel, status, subject, created_at, updated_at)
+                    VALUES ($1, $2, 'active', $3, NOW(), NOW())
+                    RETURNING id
+                    """,
+                    customer_db_id,
+                    db_channel,
+                    input_data.issue[:100]  # Use first 100 chars as subject
+                )
+                logger.info(f"Created conversation: {conversation_id}")
+
+                # Create ticket
+                ticket_id = await conn.fetchval(
+                    """
+                    INSERT INTO tickets (conversation_id, customer_id, title, description, status, priority, created_at, updated_at)
+                    VALUES ($1, $2, $3, $4, 'open', $5, NOW(), NOW())
+                    RETURNING id
+                    """,
+                    conversation_id,
+                    customer_db_id,
+                    input_data.issue[:200],  # Title
+                    input_data.issue,  # Full description
+                    input_data.priority.lower()
+                )
+                logger.info(f"Created ticket: {ticket_id}")
+
+                # Create initial message
+                await conn.execute(
+                    """
+                    INSERT INTO messages (conversation_id, sender_type, sender_id, content, created_at)
+                    VALUES ($1, 'customer', $2, $3, NOW())
+                    """,
+                    conversation_id,
+                    input_data.customer_id,
+                    input_data.issue
+                )
+
+        logger.info(f"Ticket created successfully: {ticket_id}")
 
         return {
             "success": True,
-            "ticket_id": ticket_id,
+            "ticket_id": str(ticket_id),
             "customer_id": input_data.customer_id,
             "priority": input_data.priority,
             "channel": input_data.channel,
@@ -310,10 +375,50 @@ async def send_response(
             input_data.channel
         )
 
-        # TODO: Implement actual sending via channel handlers
-        # - For gmail: Use Gmail handler
-        # - For whatsapp: Use WhatsApp handler
-        # - For web_form: Store in database for retrieval
+        # Get customer email from ticket
+        db_pool = get_db_pool()
+        customer_data = await db_pool.fetchrow(
+            """
+            SELECT c.email, c.name, t.title
+            FROM tickets t
+            JOIN customers c ON t.customer_id = c.id
+            WHERE t.id = $1::uuid
+            """,
+            ticket_id
+        )
+
+        if not customer_data:
+            raise ValueError(f"Ticket {ticket_id} not found")
+
+        # Send via appropriate channel
+        if input_data.channel.lower() in ["gmail", "web_form"]:
+            # Import here to avoid circular dependency
+            from app.handlers.gmail import gmail_handler
+
+            try:
+                await gmail_handler.send_reply(
+                    to_email=customer_data['email'],
+                    subject=f"Re: {customer_data['title']}",
+                    body=formatted_message
+                )
+                logger.info(f"Email sent to {customer_data['email']}")
+            except ValueError as e:
+                logger.warning(f"Gmail not configured: {e}")
+                # Continue even if email fails
+        elif input_data.channel.lower() == "whatsapp":
+            # TODO: Implement WhatsApp sending
+            logger.info("WhatsApp sending not yet implemented")
+
+        # Store response in database
+        await db_pool.execute(
+            """
+            INSERT INTO messages (conversation_id, sender_type, sender_id, content, created_at)
+            SELECT conversation_id, 'agent', 'customer_success_agent', $2, NOW()
+            FROM tickets WHERE id = $1::uuid
+            """,
+            ticket_id,
+            formatted_message
+        )
 
         logger.info(f"Response sent successfully for ticket {ticket_id}")
 
@@ -323,7 +428,8 @@ async def send_response(
             "channel": input_data.channel,
             "message_sent": True,
             "formatted_message": formatted_message,
-            "sent_at": datetime.now(timezone.utc).isoformat()
+            "sent_at": datetime.now(timezone.utc).isoformat(),
+            "recipient": customer_data['email']
         }
 
     except Exception as e:

@@ -23,16 +23,16 @@ class CustomerSuccessAgent:
 
     def __init__(self):
         """Initialize the agent."""
-        self.api_key = os.getenv("OPENROUTER_API_KEY")
+        self.api_key = os.getenv("GROQ_API_KEY")
         if not self.api_key:
-            raise ValueError("OPENROUTER_API_KEY environment variable is required")
+            raise ValueError("GROQ_API_KEY environment variable is required")
 
-        self.base_url = os.getenv("OPENROUTER_BASE_URL", "https://openrouter.ai/api/v1")
+        self.base_url = os.getenv("GROQ_BASE_URL", "https://api.groq.com/openai/v1")
         self.client = AsyncOpenAI(
             api_key=self.api_key,
             base_url=self.base_url
         )
-        self.model = os.getenv("OPENROUTER_MODEL", "mistralai/mistral-7b-instruct:free")
+        self.model = os.getenv("GROQ_MODEL", "llama-3.3-70b-versatile")
         self.agent_name = "Customer Success FTE"
 
         # Tool definitions for OpenAI function calling
@@ -198,48 +198,118 @@ class CustomerSuccessAgent:
                 {"role": "system", "content": system_prompt},
                 {
                     "role": "user",
-                    "content": f"Customer ID: {customer_id}\nChannel: {channel}\nMessage: {message}"
+                    "content": f"Customer ID: {customer_id}\nCustomer Name: {customer_name or 'Not provided'}\nChannel: {channel}\nMessage: {message}"
                 }
             ]
 
-            # Call OpenAI API WITHOUT function calling (free models don't support tools)
-            response = await self.client.chat.completions.create(
-                model=self.model,
-                messages=messages
-            )
+            # Track ticket_id for later use
+            ticket_id = None
+            final_response = None
 
-            # Process tool calls (disabled for free models)
-            tool_results = []
-            # Free OpenRouter models don't support tool use
-            # if response.choices[0].message.tool_calls:
-            #     for tool_call in response.choices[0].message.tool_calls:
-            #         tool_name = tool_call.function.name
-            #         tool_args = eval(tool_call.function.arguments)
-            #
-            #         logger.info(f"Executing tool: {tool_name}")
-            #
-            #         # Execute the tool
-            #         result = await self._execute_tool(tool_name, tool_args)
-            #         tool_results.append({
-            #             "tool": tool_name,
-            #             "result": result
-            #         })
+            # Call Groq API WITH function calling enabled
+            max_iterations = 5  # Prevent infinite loops
+            iteration = 0
+
+            while iteration < max_iterations:
+                iteration += 1
+                logger.info(f"Agent iteration {iteration}")
+
+                response = await self.client.chat.completions.create(
+                    model=self.model,
+                    messages=messages,
+                    tools=self.tools,
+                    tool_choice="auto",
+                    temperature=0.7
+                )
+
+                assistant_message = response.choices[0].message
+
+                # Add assistant message to conversation
+                messages.append({
+                    "role": "assistant",
+                    "content": assistant_message.content,
+                    "tool_calls": [
+                        {
+                            "id": tc.id,
+                            "type": tc.type,
+                            "function": {
+                                "name": tc.function.name,
+                                "arguments": tc.function.arguments
+                            }
+                        } for tc in (assistant_message.tool_calls or [])
+                    ] if assistant_message.tool_calls else None
+                })
+
+                # Check if agent wants to use tools
+                if not assistant_message.tool_calls:
+                    # No tools called - agent gave direct response
+                    logger.warning("Agent responded without using tools - this shouldn't happen")
+                    final_response = assistant_message.content or "I've processed your request."
+                    break
+
+                # Process tool calls
+                tool_results = []
+                for tool_call in assistant_message.tool_calls:
+                    tool_name = tool_call.function.name
+                    import json
+                    tool_args = json.loads(tool_call.function.arguments)
+
+                    logger.info(f"Executing tool: {tool_name} with args: {tool_args}")
+
+                    # Execute the tool
+                    result = await self._execute_tool(tool_name, tool_args)
+
+                    # Track ticket_id
+                    if tool_name == "create_ticket" and result.get("success"):
+                        ticket_id = result.get("ticket_id")
+                        logger.info(f"Ticket created: {ticket_id}")
+
+                    # Check if send_response was called
+                    if tool_name == "send_response" and result.get("success"):
+                        final_response = result.get("formatted_message")
+                        logger.info("Response sent to customer")
+
+                    tool_results.append({
+                        "tool": tool_name,
+                        "args": tool_args,
+                        "result": result
+                    })
+
+                    # Add tool result to conversation
+                    messages.append({
+                        "role": "tool",
+                        "tool_call_id": tool_call.id,
+                        "content": json.dumps(result)
+                    })
+
+                # If send_response was called, we're done
+                if any(tr["tool"] == "send_response" for tr in tool_results):
+                    logger.info("Agent completed workflow with send_response")
+                    break
+
+            # If no response was sent, create a fallback
+            if not final_response:
+                logger.warning("Agent didn't call send_response - creating fallback")
+                final_response = "Thank you for contacting us. Your request has been received and we'll get back to you shortly."
 
             return {
                 "success": True,
                 "customer_id": customer_id,
                 "channel": channel,
+                "ticket_id": ticket_id,
                 "escalation_triggered": escalation_check["should_escalate"],
                 "escalation_reason": escalation_check.get("reason"),
-                "tool_calls": tool_results,
-                "response": response.choices[0].message.content
+                "response": final_response,
+                "iterations": iteration,
+                "tools_used": len(tool_results) if 'tool_results' in locals() else 0
             }
 
         except Exception as e:
             logger.error(f"Error handling customer inquiry: {e}", exc_info=True)
             return {
                 "success": False,
-                "error": str(e)
+                "error": str(e),
+                "response": "We encountered an error processing your request. Please try again."
             }
 
     async def _execute_tool(self, tool_name: str, args: Dict[str, Any]) -> Any:

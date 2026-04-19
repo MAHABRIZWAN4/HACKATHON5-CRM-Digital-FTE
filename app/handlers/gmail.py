@@ -20,8 +20,10 @@ class GmailConfig:
     """Gmail API configuration."""
 
     def __init__(self):
-        self.credentials_file = os.getenv("GMAIL_CREDENTIALS_FILE", "credentials.json")
-        self.token_file = os.getenv("GMAIL_TOKEN_FILE", "token.json")
+        # Use absolute paths relative to project root
+        project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
+        self.credentials_file = os.getenv("GMAIL_CREDENTIALS_FILE", os.path.join(project_root, "credentials.json"))
+        self.token_file = os.getenv("GMAIL_TOKEN_FILE", os.path.join(project_root, "token.json"))
         self.gmail_address = os.getenv("GMAIL_ADDRESS", "")
 
     def validate(self) -> None:

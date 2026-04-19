@@ -7,6 +7,20 @@ from app.db.connection import get_db_pool
 router = APIRouter(tags=["health"])
 
 
+@router.get("/", status_code=status.HTTP_200_OK)
+async def root():
+    """Root endpoint with API information."""
+    return {
+        "message": "Support Ticket System API",
+        "version": "1.0.0",
+        "endpoints": {
+            "health": "/health",
+            "support": "/support",
+            "webhooks": "/webhooks"
+        }
+    }
+
+
 @router.get("/health", status_code=status.HTTP_200_OK)
 async def health_check():
     """Health check endpoint that verifies database connectivity."""

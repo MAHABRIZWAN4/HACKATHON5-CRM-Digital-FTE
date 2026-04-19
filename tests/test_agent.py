@@ -145,15 +145,23 @@ class TestTools:
     @pytest.mark.asyncio
     async def test_send_response_success(self, db_setup):
         """Test sending response."""
+        # Create a ticket first
+        ticket_result = await create_ticket(
+            "test@example.com", "Test issue", "medium", "gmail"
+        )
+        assert ticket_result["success"] is True
+        ticket_id = ticket_result["ticket_id"]
+
+        # Now test sending response
         result = await send_response(
-            ticket_id="ticket_123",
+            ticket_id=ticket_id,
             message="Thank you for contacting us",
             channel="gmail"
         )
 
         assert result["success"] is True
         assert result["message_sent"] is True
-        assert result["ticket_id"] == "ticket_123"
+        assert result["ticket_id"] == ticket_id
         assert result["channel"] == "gmail"
         assert "formatted_message" in result
 
@@ -161,7 +169,7 @@ class TestTools:
     async def test_send_response_invalid_channel(self, db_setup):
         """Test sending response with invalid channel."""
         result = await send_response(
-            ticket_id="ticket_123",
+            ticket_id="123e4567-e89b-12d3-a456-426614174000",
             message="Test message",
             channel="invalid_channel"
         )
@@ -323,34 +331,34 @@ class TestAgentInitialization:
 
     def test_agent_initialization_with_api_key(self, monkeypatch):
         """Test agent initializes with API key."""
-        monkeypatch.setenv("OPENROUTER_API_KEY", "test_key_123")
+        monkeypatch.setenv("GROQ_API_KEY", "test_key_123")
 
         agent = CustomerSuccessAgent()
 
         assert agent.api_key == "test_key_123"
-        assert agent.model == "mistralai/mistral-7b-instruct:free"
+        assert agent.model == "llama-3.3-70b-versatile"
         assert agent.agent_name == "Customer Success FTE"
         assert len(agent.tools) == 5
 
     def test_agent_initialization_without_api_key(self, monkeypatch):
         """Test agent fails without API key."""
-        monkeypatch.delenv("OPENROUTER_API_KEY", raising=False)
+        monkeypatch.delenv("GROQ_API_KEY", raising=False)
 
-        with pytest.raises(ValueError, match="OPENROUTER_API_KEY"):
+        with pytest.raises(ValueError, match="GROQ_API_KEY"):
             CustomerSuccessAgent()
 
     def test_agent_custom_model(self, monkeypatch):
         """Test agent with custom model."""
-        monkeypatch.setenv("OPENROUTER_API_KEY", "test_key")
-        monkeypatch.setenv("OPENROUTER_MODEL", "gpt-4-turbo")
+        monkeypatch.setenv("GROQ_API_KEY", "test_key")
+        monkeypatch.setenv("GROQ_MODEL", "llama-3.1-70b-versatile")
 
         agent = CustomerSuccessAgent()
 
-        assert agent.model == "gpt-4-turbo"
+        assert agent.model == "llama-3.1-70b-versatile"
 
     def test_agent_tools_defined(self, monkeypatch):
         """Test all required tools are defined."""
-        monkeypatch.setenv("OPENROUTER_API_KEY", "test_key")
+        monkeypatch.setenv("GROQ_API_KEY", "test_key")
 
         agent = CustomerSuccessAgent()
 
@@ -369,7 +377,7 @@ class TestAgentErrorHandling:
     @pytest.mark.asyncio
     async def test_tool_execution_with_invalid_tool(self, monkeypatch, db_setup):
         """Test error handling for invalid tool."""
-        monkeypatch.setenv("OPENROUTER_API_KEY", "test_key")
+        monkeypatch.setenv("GROQ_API_KEY", "test_key")
 
         agent = CustomerSuccessAgent()
 
@@ -378,8 +386,8 @@ class TestAgentErrorHandling:
 
     @pytest.mark.asyncio
     async def test_handle_inquiry_with_missing_openai_key(self, monkeypatch, db_setup):
-        """Test handling inquiry without OpenAI key."""
-        monkeypatch.delenv("OPENROUTER_API_KEY", raising=False)
+        """Test handling inquiry without Groq API key."""
+        monkeypatch.delenv("GROQ_API_KEY", raising=False)
 
         with pytest.raises(ValueError):
             agent = CustomerSuccessAgent()
@@ -396,6 +404,7 @@ class TestToolIntegration:
             "test@example.com", "Test", "medium", "gmail"
         )
         assert result["success"] is True
+        ticket_id = result["ticket_id"]
 
         # Test get_customer_history
         result = await get_customer_history("test@example.com")
@@ -409,6 +418,6 @@ class TestToolIntegration:
         result = await escalate_to_human("ticket_123", "test", "low")
         assert result["success"] is True
 
-        # Test send_response
-        result = await send_response("ticket_123", "test", "gmail")
+        # Test send_response with actual ticket_id
+        result = await send_response(ticket_id, "test", "gmail")
         assert result["success"] is True
