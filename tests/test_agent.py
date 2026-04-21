@@ -120,21 +120,21 @@ class TestTools:
     async def test_escalate_to_human_success(self, db_setup):
         """Test successful escalation."""
         result = await escalate_to_human(
-            ticket_id="ticket_123",
+            ticket_id="00000000-0000-0000-0000-000000000001",
             reason="Customer requested human agent",
             urgency="high"
         )
 
         assert result["success"] is True
         assert result["escalated"] is True
-        assert result["ticket_id"] == "ticket_123"
+        assert result["ticket_id"] == "00000000-0000-0000-0000-000000000001"
         assert result["urgency"] == "high"
 
     @pytest.mark.asyncio
     async def test_escalate_to_human_invalid_urgency(self, db_setup):
         """Test escalation with invalid urgency."""
         result = await escalate_to_human(
-            ticket_id="ticket_123",
+            ticket_id="00000000-0000-0000-0000-000000000001",
             reason="Test",
             urgency="invalid_urgency"
         )
@@ -415,7 +415,7 @@ class TestToolIntegration:
         assert result["success"] is True
 
         # Test escalate_to_human
-        result = await escalate_to_human("ticket_123", "test", "low")
+        result = await escalate_to_human(ticket_id, "test", "low")
         assert result["success"] is True
 
         # Test send_response with actual ticket_id

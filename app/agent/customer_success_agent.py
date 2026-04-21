@@ -214,15 +214,26 @@ class CustomerSuccessAgent:
                 iteration += 1
                 logger.info(f"Agent iteration {iteration}")
 
-                response = await self.client.chat.completions.create(
-                    model=self.model,
-                    messages=messages,
-                    tools=self.tools,
-                    tool_choice="auto",
-                    temperature=0.7
-                )
+                try:
+                    response = await self.client.chat.completions.create(
+                        model=self.model,
+                        messages=messages,
+                        tools=self.tools,
+                        tool_choice="auto",
+                        temperature=0.7
+                    )
 
-                assistant_message = response.choices[0].message
+                    assistant_message = response.choices[0].message
+
+                except Exception as api_error:
+                    # Handle Groq 400 errors - fallback to simple completion
+                    error_str = str(api_error)
+                    if "400" in error_str or "tool_use_failed" in error_str.lower():
+                        logger.warning(f"Groq API error (likely 400), using fallback mode: {api_error}")
+                        return await self._fallback_response(customer_id, message, channel, customer_name)
+                    else:
+                        # Re-raise other errors
+                        raise
 
                 # Add assistant message to conversation
                 messages.append({
@@ -311,6 +322,100 @@ class CustomerSuccessAgent:
                 "error": str(e),
                 "response": "We encountered an error processing your request. Please try again."
             }
+
+    async def _fallback_response(
+        self,
+        customer_id: str,
+        message: str,
+        channel: str,
+        customer_name: Optional[str] = None
+    ) -> Dict[str, Any]:
+        """
+        Fallback response when Groq API fails with 400 error.
+        Creates ticket and sends response without function calling.
+        """
+        try:
+            logger.info("Using fallback mode - creating ticket and response directly")
+
+            # Determine priority based on message content
+            priority = "medium"
+            if any(word in message.lower() for word in ["urgent", "critical", "emergency", "asap"]):
+                priority = "high"
+            elif any(word in message.lower() for word in ["lawyer", "legal", "sue", "refund"]):
+                priority = "urgent"
+
+            # Create ticket directly
+            ticket_result = await create_ticket(
+                customer_id=customer_id,
+                issue=message,
+                priority=priority,
+                channel=channel
+            )
+
+            if not ticket_result.get("success"):
+                raise Exception(f"Failed to create ticket: {ticket_result.get('error')}")
+
+            ticket_id = ticket_result.get("ticket_id")
+            logger.info(f"Fallback: Created ticket {ticket_id}")
+
+            # Generate simple intelligent response without LLM
+            response_message = self._generate_fallback_message(message, customer_name, channel)
+
+            # Send response directly
+            send_result = await send_response(
+                ticket_id=ticket_id,
+                message=response_message,
+                channel=channel
+            )
+
+            if not send_result.get("success"):
+                logger.error(f"Failed to send response: {send_result.get('error')}")
+
+            return {
+                "success": True,
+                "customer_id": customer_id,
+                "channel": channel,
+                "ticket_id": ticket_id,
+                "escalation_triggered": False,
+                "response": send_result.get("formatted_message", response_message),
+                "iterations": 0,
+                "tools_used": 2,
+                "fallback_mode": True
+            }
+
+        except Exception as e:
+            logger.error(f"Error in fallback response: {e}", exc_info=True)
+            return {
+                "success": False,
+                "error": str(e),
+                "response": "We encountered an error processing your request. Please try again."
+            }
+
+    def _generate_fallback_message(
+        self,
+        message: str,
+        customer_name: Optional[str],
+        channel: str
+    ) -> str:
+        """Generate a simple intelligent response without LLM."""
+        name = customer_name or "there"
+
+        # Check for common keywords
+        if any(word in message.lower() for word in ["login", "sign in", "password", "access"]):
+            response = f"Hello {name}! I've received your login issue. Please try resetting your password using the 'Forgot Password' link. If that doesn't work, our team will assist you shortly."
+        elif any(word in message.lower() for word in ["refund", "billing", "payment", "charge"]):
+            response = f"Hello {name}! I've escalated your billing inquiry to our finance team. They will review your request and respond within 24 hours."
+        elif any(word in message.lower() for word in ["bug", "error", "broken", "not working"]):
+            response = f"Hello {name}! Thank you for reporting this issue. Our technical team has been notified and will investigate. We'll update you as soon as we have more information."
+        else:
+            response = f"Hello {name}! Thank you for contacting us. I've created a ticket for your inquiry and our team will respond shortly. We appreciate your patience."
+
+        # Adjust for channel
+        if channel == "whatsapp":
+            # Shorten for WhatsApp
+            response = response.replace("Hello ", "Hi ").replace("Thank you for contacting us. ", "")
+
+        return response
 
     async def _execute_tool(self, tool_name: str, args: Dict[str, Any]) -> Any:
         """Execute a tool by name."""

@@ -1,6 +1,7 @@
 """Agent tools for Customer Success FTE."""
 
 import logging
+import uuid
 from typing import List, Dict, Any, Optional
 from pydantic import BaseModel, Field
 from datetime import datetime, timezone
@@ -9,6 +10,26 @@ from app.db.connection import get_db_pool
 from app.agent.formatters import ResponseFormatter
 
 logger = logging.getLogger(__name__)
+
+
+def validate_uuid(ticket_id: str) -> None:
+    """
+    Validate that ticket_id is a valid UUID format.
+
+    Args:
+        ticket_id: The ticket ID to validate
+
+    Raises:
+        ValueError: If ticket_id is not a valid UUID
+    """
+    try:
+        uuid.UUID(ticket_id)
+    except (ValueError, AttributeError, TypeError):
+        raise ValueError(
+            f"Invalid ticket_id format: '{ticket_id}'. "
+            f"Expected UUID format (e.g., '550e8400-e29b-41d4-a716-446655440000'). "
+            f"You must use the EXACT ticket_id returned by create_ticket, not a placeholder."
+        )
 
 
 # Pydantic models for tool inputs
@@ -302,6 +323,9 @@ async def escalate_to_human(
     try:
         logger.info(f"Escalating ticket {ticket_id}: {reason}")
 
+        # Validate UUID format before database call
+        validate_uuid(ticket_id)
+
         # Validate input
         input_data = EscalateToHumanInput(
             ticket_id=ticket_id,
@@ -356,6 +380,9 @@ async def send_response(
     """
     try:
         logger.info(f"Sending response for ticket {ticket_id} via {channel}")
+
+        # Validate UUID format before database call
+        validate_uuid(ticket_id)
 
         # Validate input
         input_data = SendResponseInput(
