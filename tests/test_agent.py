@@ -119,15 +119,23 @@ class TestTools:
     @pytest.mark.asyncio
     async def test_escalate_to_human_success(self, db_setup):
         """Test successful escalation."""
+        # Create a ticket first
+        ticket_result = await create_ticket(
+            "escalation@example.com", "Need escalation", "high", "gmail"
+        )
+        assert ticket_result["success"] is True
+        ticket_id = ticket_result["ticket_id"]
+
+        # Now test escalation
         result = await escalate_to_human(
-            ticket_id="00000000-0000-0000-0000-000000000001",
+            ticket_id=ticket_id,
             reason="Customer requested human agent",
             urgency="high"
         )
 
         assert result["success"] is True
         assert result["escalated"] is True
-        assert result["ticket_id"] == "00000000-0000-0000-0000-000000000001"
+        assert result["ticket_id"] == ticket_id
         assert result["urgency"] == "high"
 
     @pytest.mark.asyncio

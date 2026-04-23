@@ -2,6 +2,7 @@
 
 import logging
 import uuid
+import json
 from typing import List, Dict, Any, Optional
 from pydantic import BaseModel, Field
 from datetime import datetime, timezone
@@ -338,10 +339,72 @@ async def escalate_to_human(
         if input_data.urgency.lower() not in valid_urgencies:
             raise ValueError(f"Invalid urgency. Must be one of: {valid_urgencies}")
 
-        # TODO: Implement actual escalation logic
-        # - Update ticket status in database
-        # - Notify human agents
-        # - Add to escalation queue
+        # Update ticket in database
+        db_pool = get_db_pool()
+
+        async with db_pool.acquire() as conn:
+            async with conn.transaction():
+                # Get customer email for notification
+                ticket_data = await conn.fetchrow(
+                    """
+                    SELECT t.id, t.title, c.email, c.name
+                    FROM tickets t
+                    JOIN customers c ON t.customer_id = c.id
+                    WHERE t.id = $1::uuid
+                    """,
+                    ticket_id
+                )
+
+                if not ticket_data:
+                    raise ValueError(f"Ticket {ticket_id} not found")
+
+                # Update ticket with escalation data
+                escalation_metadata = json.dumps({
+                    "escalation_reason": input_data.reason,
+                    "escalation_urgency": input_data.urgency
+                })
+
+                await conn.execute(
+                    """
+                    UPDATE tickets
+                    SET escalated = true,
+                        escalated_at = NOW(),
+                        status = 'escalated',
+                        metadata = metadata || $2::jsonb
+                    WHERE id = $1::uuid
+                    """,
+                    ticket_id,
+                    escalation_metadata
+                )
+
+                logger.info(f"Ticket {ticket_id} marked as escalated in database")
+
+        # Send email notification to support team
+        import os
+        support_email = os.getenv("SUPPORT_EMAIL")
+
+        if support_email:
+            from app.handlers.gmail import gmail_handler
+
+            try:
+                email_body = f"""New escalation requires attention!
+
+Customer: {ticket_data['email']} ({ticket_data['name']})
+Ticket ID: {ticket_id}
+Reason: {input_data.reason}
+Urgency: {input_data.urgency.upper()}
+
+Login to dashboard to handle this case.
+"""
+
+                await gmail_handler.send_reply(
+                    to_email=support_email,
+                    subject=f"🚨 ESCALATION: {input_data.reason} - Ticket {ticket_id}",
+                    body=email_body
+                )
+                logger.info(f"Escalation email sent to {support_email}")
+            except Exception as e:
+                logger.warning(f"Failed to send escalation email: {e}")
 
         return {
             "success": True,

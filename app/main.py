@@ -9,7 +9,7 @@ from app.core.config import get_settings
 from app.db.config import DatabaseConfig
 from app.db.connection import init_db, close_db
 from app.middleware.error_handler import ErrorHandlerMiddleware
-from app.api.routers import health, webhooks, support
+from app.api.routers import health, webhooks, support, dashboard
 
 # Configure logging
 logging.basicConfig(
@@ -69,6 +69,7 @@ def create_app() -> FastAPI:
     app.include_router(health.router)
     app.include_router(webhooks.router)
     app.include_router(support.router)
+    app.include_router(dashboard.router)
 
     logger.info(f"Application created: {settings.app_name} v{settings.app_version}")
 
