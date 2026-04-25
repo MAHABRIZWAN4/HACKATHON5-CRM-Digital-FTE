@@ -274,6 +274,12 @@ Original message:
             self.config.validate()
             service = self._get_gmail_service()
 
+            # Clean subject line - remove newlines and limit length
+            subject = subject.replace('\n', ' ').replace('\r', ' ')
+            subject = subject[:200]  # max 200 chars
+            if subject.startswith('Re: Subject:'):
+                subject = subject.replace('Re: Subject:', 'Re:').strip()
+
             # Create MIME message
             message = MIMEText(body)
             message['to'] = to_email

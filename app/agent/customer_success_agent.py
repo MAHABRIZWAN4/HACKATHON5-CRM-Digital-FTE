@@ -332,7 +332,7 @@ class CustomerSuccessAgent:
     ) -> Dict[str, Any]:
         """
         Fallback response when Groq API fails with 400 error.
-        Creates ticket and sends response without function calling.
+        Creates ticket and sends response using simple completion (no tools).
         """
         try:
             logger.info("Using fallback mode - creating ticket and response directly")
@@ -358,8 +358,12 @@ class CustomerSuccessAgent:
             ticket_id = ticket_result.get("ticket_id")
             logger.info(f"Fallback: Created ticket {ticket_id}")
 
-            # Generate simple intelligent response without LLM
-            response_message = self._generate_fallback_message(message, customer_name, channel)
+            # Generate intelligent response using Groq simple completion (no tools)
+            try:
+                response_message = await self._generate_groq_fallback_response(message, customer_name, channel)
+            except Exception as groq_error:
+                logger.warning(f"Groq fallback failed, using simple response: {groq_error}")
+                response_message = self._generate_fallback_message(message, customer_name, channel)
 
             # Send response directly
             send_result = await send_response(
@@ -390,6 +394,45 @@ class CustomerSuccessAgent:
                 "error": str(e),
                 "response": "We encountered an error processing your request. Please try again."
             }
+
+    async def _generate_groq_fallback_response(
+        self,
+        message: str,
+        customer_name: Optional[str],
+        channel: str
+    ) -> str:
+        """Generate intelligent response using Groq simple completion (no tools)."""
+        name = customer_name or "there"
+
+        # Create a simple prompt for generating a helpful response
+        prompt = f"""You are a helpful customer support agent. A customer named {name} sent this message via {channel}:
+
+"{message}"
+
+Generate a brief, helpful response that:
+- Acknowledges their issue
+- Provides helpful guidance if possible
+- Assures them their ticket has been created
+- Is professional and friendly
+- Is 2-3 sentences maximum
+
+Response:"""
+
+        try:
+            response = await self.client.chat.completions.create(
+                model=self.model,
+                messages=[{"role": "user", "content": prompt}],
+                temperature=0.7,
+                max_tokens=150
+            )
+
+            generated_response = response.choices[0].message.content.strip()
+            logger.info(f"Groq fallback generated response: {generated_response[:100]}...")
+            return generated_response
+
+        except Exception as e:
+            logger.error(f"Error generating Groq fallback response: {e}")
+            raise
 
     def _generate_fallback_message(
         self,
