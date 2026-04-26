@@ -3,6 +3,7 @@
 import pytest
 import pytest_asyncio
 from datetime import datetime, timezone
+from unittest.mock import AsyncMock, MagicMock, patch
 
 from app.db.config import DatabaseConfig
 from app.db.connection import init_db, close_db
@@ -271,7 +272,21 @@ class TestWhatsAppHandler:
             "NumMedia": "0"
         }
 
-        result = await handler.process_webhook(webhook_data)
+        # Mock the agent to avoid Groq API call
+        with patch('app.agent.customer_success_agent.get_agent') as mock_get_agent:
+            mock_agent = MagicMock()
+            mock_agent.handle_customer_inquiry = AsyncMock(return_value={
+                "success": True,
+                "ticket_id": "123",
+                "response": "Thank you for contacting us."
+            })
+            mock_get_agent.return_value = mock_agent
+
+            # Mock send_message to avoid Twilio API call
+            with patch.object(handler, 'send_message', new_callable=AsyncMock) as mock_send:
+                mock_send.return_value = True
+
+                result = await handler.process_webhook(webhook_data)
 
         assert result["status"] == "success"
         assert result["channel"] == "whatsapp"
@@ -397,13 +412,22 @@ class TestWhatsAppHandler:
         """Test sending WhatsApp message."""
         monkeypatch.setenv("TWILIO_ACCOUNT_SID", "AC123")
         monkeypatch.setenv("TWILIO_AUTH_TOKEN", "token123")
-        monkeypatch.setenv("TWILIO_PHONE_NUMBER", "whatsapp:+1234567890")
+        monkeypatch.setenv("TWILIO_WHATSAPP_NUMBER", "whatsapp:+1234567890")
 
         handler = WhatsAppHandler()
-        result = await handler.send_message(
-            "whatsapp:+0987654321",
-            "Your ticket has been created"
-        )
+
+        # Mock Twilio client to avoid real API call
+        with patch('twilio.rest.Client') as mock_client_class:
+            mock_client = MagicMock()
+            mock_message = MagicMock()
+            mock_message.sid = "SM_mock_123"
+            mock_client.messages.create.return_value = mock_message
+            mock_client_class.return_value = mock_client
+
+            result = await handler.send_message(
+                "whatsapp:+0987654321",
+                "Your ticket has been created"
+            )
 
         assert result is True
 

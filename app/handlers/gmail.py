@@ -1,9 +1,10 @@
-"""Gmail intake handler with real Gmail API integration."""
+"""Gmail intake handler with real Gmail API integration and polling."""
 
 import logging
 import os
 import base64
-from typing import Dict, Any, Optional
+import asyncio
+from typing import Dict, Any, Optional, List
 from datetime import datetime, timezone
 from email.mime.text import MIMEText
 
@@ -25,6 +26,8 @@ class GmailConfig:
         self.credentials_file = os.getenv("GMAIL_CREDENTIALS_FILE", os.path.join(project_root, "credentials.json"))
         self.token_file = os.getenv("GMAIL_TOKEN_FILE", os.path.join(project_root, "token.json"))
         self.gmail_address = os.getenv("GMAIL_ADDRESS", "")
+        self.polling_interval = int(os.getenv("GMAIL_POLLING_INTERVAL", "60"))  # seconds
+        self.polling_enabled = os.getenv("GMAIL_POLLING_ENABLED", "false").lower() == "true"
 
     def validate(self) -> None:
         """Validate Gmail configuration."""
@@ -57,11 +60,13 @@ class GmailMessage:
 
 
 class GmailHandler:
-    """Handler for Gmail webhook events with real Gmail API integration."""
+    """Handler for Gmail webhook events with real Gmail API integration and polling."""
 
     def __init__(self):
         self.config = GmailConfig()
         self._service = None
+        self._polling_task = None
+        self._is_polling = False
 
     def _get_gmail_service(self):
         """Get authenticated Gmail API service."""
@@ -75,7 +80,8 @@ class GmailHandler:
             creds = Credentials.from_authorized_user_file(
                 self.config.token_file,
                 ['https://www.googleapis.com/auth/gmail.readonly',
-                 'https://www.googleapis.com/auth/gmail.send']
+                 'https://www.googleapis.com/auth/gmail.send',
+                 'https://www.googleapis.com/auth/gmail.modify']
             )
 
             # Build Gmail service
@@ -86,6 +92,163 @@ class GmailHandler:
         except Exception as e:
             logger.error(f"Error initializing Gmail service: {e}")
             raise
+
+    async def poll_inbox(self) -> List[Dict[str, Any]]:
+        """
+        Poll Gmail inbox for unread emails and process them.
+
+        Returns:
+            List of processed email results
+        """
+        try:
+            if not self.config.polling_enabled:
+                logger.debug("Gmail polling is disabled")
+                return []
+
+            service = self._get_gmail_service()
+
+            # Get unread messages
+            results = service.users().messages().list(
+                userId='me',
+                q='is:unread',
+                maxResults=10
+            ).execute()
+
+            messages = results.get('messages', [])
+
+            if not messages:
+                logger.debug("No unread emails found")
+                return []
+
+            logger.info(f"Found {len(messages)} unread emails")
+            processed = []
+
+            for msg in messages:
+                try:
+                    # Get full message details
+                    message = service.users().messages().get(
+                        userId='me',
+                        id=msg['id'],
+                        format='full'
+                    ).execute()
+
+                    # Parse email
+                    email_data = self._parse_gmail_message(message)
+
+                    # Process through agent
+                    from app.agent.customer_success_agent import get_agent
+                    agent = get_agent()
+
+                    result = await agent.handle_customer_inquiry(
+                        customer_id=email_data['from_email'],
+                        message=email_data['body'],
+                        channel='gmail',
+                        customer_name=email_data.get('from_name')
+                    )
+
+                    # Mark as read
+                    service.users().messages().modify(
+                        userId='me',
+                        id=msg['id'],
+                        body={'removeLabelIds': ['UNREAD']}
+                    ).execute()
+
+                    logger.info(f"Processed and marked email {msg['id']} as read")
+                    processed.append({
+                        "message_id": msg['id'],
+                        "from": email_data['from_email'],
+                        "subject": email_data['subject'],
+                        "result": result
+                    })
+
+                except Exception as e:
+                    logger.error(f"Error processing email {msg['id']}: {e}", exc_info=True)
+                    continue
+
+            return processed
+
+        except Exception as e:
+            logger.error(f"Error polling Gmail inbox: {e}", exc_info=True)
+            return []
+
+    def _parse_gmail_message(self, message: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Parse Gmail API message into structured data.
+
+        Args:
+            message: Gmail API message object
+
+        Returns:
+            Dict with parsed email data
+        """
+        headers = message['payload']['headers']
+
+        # Extract headers
+        from_header = next((h['value'] for h in headers if h['name'].lower() == 'from'), '')
+        subject = next((h['value'] for h in headers if h['name'].lower() == 'subject'), 'No Subject')
+
+        # Parse from header (format: "Name <email@example.com>" or "email@example.com")
+        from_email = from_header
+        from_name = None
+
+        if '<' in from_header and '>' in from_header:
+            from_name = from_header.split('<')[0].strip().strip('"')
+            from_email = from_header.split('<')[1].split('>')[0].strip()
+
+        # Extract body
+        body = self._get_message_body(message['payload'])
+
+        return {
+            "message_id": message['id'],
+            "from_email": from_email,
+            "from_name": from_name,
+            "subject": subject,
+            "body": body
+        }
+
+    def _get_message_body(self, payload: Dict[str, Any]) -> str:
+        """Extract message body from Gmail payload."""
+        if 'body' in payload and 'data' in payload['body']:
+            return base64.urlsafe_b64decode(payload['body']['data']).decode('utf-8')
+
+        if 'parts' in payload:
+            for part in payload['parts']:
+                if part['mimeType'] == 'text/plain':
+                    if 'data' in part['body']:
+                        return base64.urlsafe_b64decode(part['body']['data']).decode('utf-8')
+                elif 'parts' in part:
+                    body = self._get_message_body(part)
+                    if body:
+                        return body
+
+        return ""
+
+    async def start_polling(self):
+        """Start Gmail inbox polling as background task."""
+        if self._is_polling:
+            logger.warning("Gmail polling already running")
+            return
+
+        if not self.config.polling_enabled:
+            logger.info("Gmail polling is disabled (GMAIL_POLLING_ENABLED=false)")
+            return
+
+        self._is_polling = True
+        logger.info(f"Starting Gmail polling (interval: {self.config.polling_interval}s)")
+
+        while self._is_polling:
+            try:
+                await self.poll_inbox()
+            except Exception as e:
+                logger.error(f"Error in polling loop: {e}", exc_info=True)
+
+            await asyncio.sleep(self.config.polling_interval)
+
+    async def stop_polling(self):
+        """Stop Gmail inbox polling."""
+        if self._is_polling:
+            logger.info("Stopping Gmail polling")
+            self._is_polling = False
 
     async def process_webhook(self, webhook_data: Dict[str, Any]) -> Dict[str, Any]:
         """

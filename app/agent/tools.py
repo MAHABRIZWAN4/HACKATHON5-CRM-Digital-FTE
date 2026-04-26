@@ -3,6 +3,7 @@
 import logging
 import uuid
 import json
+import os
 from typing import List, Dict, Any, Optional
 from pydantic import BaseModel, Field
 from datetime import datetime, timezone
@@ -70,7 +71,7 @@ class SendResponseInput(BaseModel):
 # Tool implementations
 async def search_knowledge_base(query: str, max_results: int = 5) -> Dict[str, Any]:
     """
-    Search the knowledge base for relevant articles.
+    Search the knowledge base for relevant articles using full-text search.
 
     Args:
         query: Search query
@@ -85,28 +86,86 @@ async def search_knowledge_base(query: str, max_results: int = 5) -> Dict[str, A
         # Validate input
         input_data = SearchKnowledgeBaseInput(query=query, max_results=max_results)
 
-        # TODO: Implement actual knowledge base search
-        # For now, return mock results
-        results = [
-            {
-                "id": "kb_001",
-                "title": "Getting Started Guide",
-                "content": "Learn how to get started with our platform...",
-                "relevance": 0.95
-            },
-            {
-                "id": "kb_002",
-                "title": "Troubleshooting Common Issues",
-                "content": "Solutions to common problems...",
-                "relevance": 0.87
-            }
-        ]
+        db_pool = get_db_pool()
+        results = []
+
+        # Try PostgreSQL full-text search first
+        try:
+            rows = await db_pool.fetch(
+                """
+                SELECT id, title, content, category,
+                       ts_rank(to_tsvector('english', content || ' ' || title), plainto_tsquery('english', $1)) as relevance
+                FROM knowledge_base
+                WHERE active = true
+                  AND to_tsvector('english', content || ' ' || title) @@ plainto_tsquery('english', $1)
+                ORDER BY relevance DESC
+                LIMIT $2
+                """,
+                input_data.query,
+                input_data.max_results
+            )
+
+            results = [
+                {
+                    "id": str(row['id']),
+                    "title": row['title'],
+                    "content": row['content'],
+                    "category": row['category'],
+                    "relevance": float(row['relevance'])
+                }
+                for row in rows
+            ]
+
+            logger.info(f"Full-text search found {len(results)} results")
+
+        except Exception as e:
+            logger.warning(f"Full-text search failed, falling back to ILIKE search: {e}")
+            results = []
+
+        # Fallback to ILIKE search if full-text search fails or returns no results
+        if not results:
+            rows = await db_pool.fetch(
+                """
+                SELECT id, title, content, category
+                FROM knowledge_base
+                WHERE active = true
+                  AND (
+                    title ILIKE $1
+                    OR content ILIKE $1
+                    OR category ILIKE $1
+                  )
+                ORDER BY
+                  CASE
+                    WHEN title ILIKE $1 THEN 1
+                    WHEN content ILIKE $2 THEN 2
+                    ELSE 3
+                  END
+                LIMIT $3
+                """,
+                f"%{input_data.query}%",
+                f"%{input_data.query[:50]}%",
+                input_data.max_results
+            )
+
+            results = [
+                {
+                    "id": str(row['id']),
+                    "title": row['title'],
+                    "content": row['content'],
+                    "category": row['category'],
+                    "relevance": 0.7
+                }
+                for row in rows
+            ]
+
+            logger.info(f"ILIKE search found {len(results)} results")
 
         return {
             "success": True,
             "query": input_data.query,
-            "results": results[:input_data.max_results],
-            "total_found": len(results)
+            "results": results,
+            "total_found": len(results),
+            "search_method": "fulltext" if results else "ilike"
         }
 
     except Exception as e:
@@ -496,8 +555,31 @@ async def send_response(
                 logger.warning(f"Gmail not configured: {e}")
                 # Continue even if email fails
         elif input_data.channel.lower() == "whatsapp":
-            # TODO: Implement WhatsApp sending
-            logger.info("WhatsApp sending not yet implemented")
+            # Import here to avoid circular dependency
+            from app.handlers.whatsapp import whatsapp_handler
+
+            try:
+                # Get customer phone from database
+                customer_phone = await db_pool.fetchval(
+                    """
+                    SELECT phone FROM customers c
+                    JOIN tickets t ON t.customer_id = c.id
+                    WHERE t.id = $1::uuid
+                    """,
+                    ticket_id
+                )
+
+                if customer_phone:
+                    await whatsapp_handler.send_message(
+                        to_number=customer_phone,
+                        body=formatted_message
+                    )
+                    logger.info(f"WhatsApp message sent to {customer_phone}")
+                else:
+                    logger.warning(f"No phone number found for ticket {ticket_id}")
+            except Exception as e:
+                logger.error(f"Failed to send WhatsApp message: {e}")
+                # Continue even if WhatsApp fails
 
         # Store response in database
         await db_pool.execute(

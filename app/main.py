@@ -1,6 +1,7 @@
 """FastAPI application entry point."""
 
 import logging
+import asyncio
 from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -34,10 +35,37 @@ async def lifespan(app: FastAPI):
         logger.error(f"Failed to initialize database: {e}")
         raise
 
+    # Start Gmail polling as background task
+    gmail_task = None
+    try:
+        from app.handlers.gmail import gmail_handler
+        if gmail_handler.config.polling_enabled:
+            gmail_task = asyncio.create_task(gmail_handler.start_polling())
+            logger.info("Gmail polling started")
+        else:
+            logger.info("Gmail polling disabled (set GMAIL_POLLING_ENABLED=true to enable)")
+    except Exception as e:
+        logger.warning(f"Could not start Gmail polling: {e}")
+
     yield
 
     # Shutdown
     logger.info("Shutting down application...")
+
+    # Stop Gmail polling
+    if gmail_task:
+        try:
+            from app.handlers.gmail import gmail_handler
+            await gmail_handler.stop_polling()
+            gmail_task.cancel()
+            try:
+                await gmail_task
+            except asyncio.CancelledError:
+                pass
+            logger.info("Gmail polling stopped")
+        except Exception as e:
+            logger.warning(f"Error stopping Gmail polling: {e}")
+
     await close_db()
     logger.info("Database closed")
 

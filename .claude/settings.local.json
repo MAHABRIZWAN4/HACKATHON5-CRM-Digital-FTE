@@ -23,7 +23,8 @@
       "Bash(npx tailwindcss:*)",
       "Bash(npx tsc:*)",
       "Bash(rm:*)",
-      "Bash(findstr :3000)"
+      "Bash(findstr :3000)",
+      "Bash(tasklist)"
     ]
   }
 }

@@ -19,7 +19,7 @@ class TwilioConfig:
     def __init__(self):
         self.account_sid = os.getenv("TWILIO_ACCOUNT_SID", "")
         self.auth_token = os.getenv("TWILIO_AUTH_TOKEN", "")
-        self.phone_number = os.getenv("TWILIO_PHONE_NUMBER", "")
+        self.phone_number = os.getenv("TWILIO_WHATSAPP_NUMBER", "")
         self.webhook_url = os.getenv("TWILIO_WEBHOOK_URL", "")
 
     def validate(self) -> None:
@@ -29,7 +29,7 @@ class TwilioConfig:
         if not self.auth_token:
             raise ValueError("TWILIO_AUTH_TOKEN is required")
         if not self.phone_number:
-            raise ValueError("TWILIO_PHONE_NUMBER is required")
+            raise ValueError("TWILIO_WHATSAPP_NUMBER is required")
 
 
 class WhatsAppMessage:
@@ -128,18 +128,16 @@ class WhatsAppHandler:
             # Parse the message
             message = self._parse_message(webhook_data)
 
-            # Create ticket in database
-            ticket_id = await self._create_ticket(message)
+            # Process through agent for intelligent response
+            agent_response = await self._process_with_agent(message)
 
-            # TODO: Send auto-reply
-            # await self._send_reply(message.from_number, f"Ticket created: {ticket_id}")
-
-            logger.info(f"WhatsApp webhook processed successfully. Ticket ID: {ticket_id}")
+            logger.info(f"WhatsApp webhook processed successfully. Ticket ID: {agent_response.get('ticket_id')}")
 
             return {
                 "status": "success",
                 "channel": "whatsapp",
-                "ticket_id": ticket_id,
+                "ticket_id": agent_response.get("ticket_id"),
+                "response_sent": agent_response.get("success", False),
                 "message": "WhatsApp message processed successfully"
             }
 
@@ -276,12 +274,66 @@ class WhatsAppHandler:
                 logger.info("Transaction committed successfully")
                 return str(ticket_id)
 
+    async def _process_with_agent(self, message: WhatsAppMessage) -> Dict[str, Any]:
+        """
+        Process WhatsApp message through the agent for intelligent response.
+
+        Args:
+            message: Parsed WhatsApp message
+
+        Returns:
+            Dict with agent response
+        """
+        try:
+            # Import agent
+            from app.agent.customer_success_agent import get_agent
+
+            # Extract phone number
+            phone_number = message.from_number.replace('whatsapp:', '')
+
+            # Get agent instance
+            agent = get_agent()
+
+            # Process through agent
+            result = await agent.handle_customer_inquiry(
+                customer_id=phone_number,
+                message=message.body,
+                channel="whatsapp",
+                customer_name=None
+            )
+
+            # If agent successfully processed and sent response, send via WhatsApp
+            if result.get("success") and result.get("response"):
+                await self.send_message(
+                    to_number=message.from_number,
+                    body=result["response"]
+                )
+                logger.info(f"Sent agent response via WhatsApp to {message.from_number}")
+
+            return result
+
+        except Exception as e:
+            logger.error(f"Error processing with agent: {e}", exc_info=True)
+            # Send fallback message
+            try:
+                await self.send_message(
+                    to_number=message.from_number,
+                    body="Thank you for contacting us. We've received your message and will respond shortly."
+                )
+            except Exception as send_error:
+                logger.error(f"Failed to send fallback message: {send_error}")
+
+            return {
+                "success": False,
+                "error": str(e)
+            }
+
     async def send_message(self, to_number: str, body: str) -> bool:
         """
         Send WhatsApp message via Twilio API.
 
         Args:
-            to_number: Recipient phone number (WhatsApp format)
+            to_number: Recipient phone number (WhatsApp format, e.g., whatsapp:+1234567890)
             body: Message body
 
         Returns:
@@ -290,11 +342,33 @@ class WhatsAppHandler:
         try:
             self.config.validate()
 
-            # TODO: Implement Twilio API sending
-            logger.info(f"Would send WhatsApp message to {to_number}: {body}")
+            # Import Twilio client
+            from twilio.rest import Client
 
+            # Initialize Twilio client
+            client = Client(self.config.account_sid, self.config.auth_token)
+
+            # Ensure numbers are in WhatsApp format
+            from_number = self.config.phone_number
+            if not from_number.startswith('whatsapp:'):
+                from_number = f'whatsapp:{from_number}'
+
+            if not to_number.startswith('whatsapp:'):
+                to_number = f'whatsapp:{to_number}'
+
+            # Send message via Twilio
+            message = client.messages.create(
+                from_=from_number,
+                to=to_number,
+                body=body
+            )
+
+            logger.info(f"WhatsApp message sent successfully. SID: {message.sid}, To: {to_number}")
             return True
 
+        except ValueError as e:
+            logger.error(f"Configuration error: {e}", exc_info=True)
+            raise
         except Exception as e:
             logger.error(f"Error sending WhatsApp message: {e}", exc_info=True)
             return False

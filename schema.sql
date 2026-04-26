@@ -1,7 +1,7 @@
 -- Customer Success Digital FTE - PostgreSQL CRM Schema
 -- Enable required extensions
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
--- CREATE EXTENSION IF NOT EXISTS "pgvector"; -- Disabled for now, will add later
+CREATE EXTENSION IF NOT EXISTS vector;
 
 -- Drop tables if they exist (for clean setup)
 DROP TABLE IF EXISTS agent_metrics CASCADE;
@@ -114,7 +114,7 @@ CREATE TABLE knowledge_base (
     content TEXT NOT NULL,
     category VARCHAR(100),
     tags TEXT[],
-    embedding TEXT, -- Placeholder for vector embeddings (will use pgvector later)
+    embedding vector(384), -- 384-dimensional embeddings from sentence-transformers
     metadata JSONB DEFAULT '{}',
     active BOOLEAN DEFAULT TRUE,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
@@ -123,7 +123,7 @@ CREATE TABLE knowledge_base (
 
 CREATE INDEX idx_knowledge_base_category ON knowledge_base(category);
 CREATE INDEX idx_knowledge_base_active ON knowledge_base(active);
--- CREATE INDEX idx_knowledge_base_embedding ON knowledge_base USING ivfflat (embedding vector_cosine_ops); -- Disabled until pgvector is installed
+CREATE INDEX idx_knowledge_base_embedding ON knowledge_base USING ivfflat (embedding vector_cosine_ops) WITH (lists = 100);
 
 -- Channel Configs: Configuration for each channel
 CREATE TABLE channel_configs (
