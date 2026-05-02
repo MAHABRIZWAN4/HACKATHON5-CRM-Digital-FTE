@@ -15,12 +15,52 @@ interface Escalation {
 }
 
 export default function Dashboard() {
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [password, setPassword] = useState('');
+  const [authError, setAuthError] = useState('');
   const [escalations, setEscalations] = useState<Escalation[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [resolvingId, setResolvingId] = useState<string | null>(null);
 
+  // Check authentication on mount
+  useEffect(() => {
+    const auth = sessionStorage.getItem('dashboard_auth');
+    if (auth === 'authenticated') {
+      setIsAuthenticated(true);
+    } else {
+      setLoading(false);
+    }
+  }, []);
+
+  // Handle login
+  const handleLogin = (e: React.FormEvent) => {
+    e.preventDefault();
+
+    // Simple password check (in production, this should be server-side)
+    const correctPassword = 'admin123'; // Default password
+
+    if (password === correctPassword) {
+      sessionStorage.setItem('dashboard_auth', 'authenticated');
+      setIsAuthenticated(true);
+      setAuthError('');
+      setPassword('');
+    } else {
+      setAuthError('Incorrect password. Please try again.');
+      setPassword('');
+    }
+  };
+
+  // Handle logout
+  const handleLogout = () => {
+    sessionStorage.removeItem('dashboard_auth');
+    setIsAuthenticated(false);
+    setPassword('');
+  };
+
   const fetchEscalations = async () => {
+    if (!isAuthenticated) return;
+
     try {
       const response = await fetch('http://localhost:8001/dashboard/escalations');
       const data = await response.json();
@@ -39,10 +79,12 @@ export default function Dashboard() {
   };
 
   useEffect(() => {
-    fetchEscalations();
-    const interval = setInterval(fetchEscalations, 30000);
-    return () => clearInterval(interval);
-  }, []);
+    if (isAuthenticated) {
+      fetchEscalations();
+      const interval = setInterval(fetchEscalations, 30000);
+      return () => clearInterval(interval);
+    }
+  }, [isAuthenticated]);
 
   const handleResolve = async (ticketId: string) => {
     setResolvingId(ticketId);
@@ -97,6 +139,49 @@ export default function Dashboard() {
     );
   }
 
+  // Show login form if not authenticated
+  if (!isAuthenticated) {
+    return (
+      <>
+        <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700&display=swap" rel="stylesheet" />
+        <div className="container">
+          <div className="login-container">
+            <div className="login-card">
+              <div className="login-header">
+                <h1 className="login-title">🔒 Dashboard Login</h1>
+                <p className="login-subtitle">Enter password to access escalation dashboard</p>
+              </div>
+              <form onSubmit={handleLogin} className="login-form">
+                <div className="form-group">
+                  <label htmlFor="password" className="form-label">Password</label>
+                  <input
+                    type="password"
+                    id="password"
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    placeholder="Enter dashboard password"
+                    className="form-input"
+                    autoFocus
+                  />
+                </div>
+                {authError && (
+                  <div className="auth-error">{authError}</div>
+                )}
+                <button type="submit" className="login-btn">
+                  Login
+                </button>
+                <div className="login-hint">
+                  Default password: admin123
+                </div>
+              </form>
+            </div>
+          </div>
+        </div>
+        <style jsx>{styles}</style>
+      </>
+    );
+  }
+
   if (error) {
     return (
       <>
@@ -121,7 +206,12 @@ export default function Dashboard() {
       <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700&display=swap" rel="stylesheet" />
       <div className="container">
         <div className="header">
-          <h1 className="title">🚨 Escalation Dashboard</h1>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+            <h1 className="title">🚨 Escalation Dashboard</h1>
+            <button onClick={handleLogout} className="logout-btn">
+              Logout
+            </button>
+          </div>
           <p className="subtitle">Real-time monitoring of escalated support tickets</p>
 
           <div className="stats-grid">
@@ -642,6 +732,129 @@ const styles = `
     padding: 60px 20px;
     color: white;
     font-size: 18px;
+  }
+
+  /* Login Form Styles */
+  .login-container {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    min-height: 80vh;
+    width: 100%;
+  }
+
+  .login-card {
+    background: white;
+    border-radius: 16px;
+    box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+    padding: 40px;
+    width: 100%;
+    max-width: 400px;
+  }
+
+  .login-header {
+    text-align: center;
+    margin-bottom: 30px;
+  }
+
+  .login-title {
+    font-size: 28px;
+    font-weight: bold;
+    color: #1a1a2e;
+    margin-bottom: 8px;
+  }
+
+  .login-subtitle {
+    font-size: 14px;
+    color: #6b7280;
+  }
+
+  .login-form {
+    width: 100%;
+  }
+
+  .form-group {
+    margin-bottom: 20px;
+  }
+
+  .form-label {
+    display: block;
+    font-size: 14px;
+    font-weight: 600;
+    color: #374151;
+    margin-bottom: 8px;
+  }
+
+  .form-input {
+    width: 100%;
+    padding: 12px 16px;
+    border: 2px solid #e5e7eb;
+    border-radius: 8px;
+    font-size: 14px;
+    font-family: 'Poppins', sans-serif;
+    transition: border-color 0.3s;
+  }
+
+  .form-input:focus {
+    outline: none;
+    border-color: #667eea;
+  }
+
+  .auth-error {
+    background: #fee2e2;
+    border: 1px solid #ef4444;
+    color: #991b1b;
+    padding: 12px;
+    border-radius: 8px;
+    font-size: 13px;
+    margin-bottom: 20px;
+  }
+
+  .login-btn {
+    width: 100%;
+    background: linear-gradient(135deg, #667eea, #764ba2);
+    color: white;
+    padding: 14px;
+    border-radius: 8px;
+    border: none;
+    font-size: 16px;
+    font-weight: 600;
+    cursor: pointer;
+    font-family: 'Poppins', sans-serif;
+    transition: transform 0.2s;
+  }
+
+  .login-btn:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
+  }
+
+  .login-hint {
+    text-align: center;
+    margin-top: 20px;
+    font-size: 12px;
+    color: #6b7280;
+    padding: 10px;
+    background: #f9fafb;
+    border-radius: 6px;
+  }
+
+  .logout-btn {
+    background: rgba(255, 255, 255, 0.1);
+    color: white;
+    padding: 8px 16px;
+    border-radius: 8px;
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+    font-family: 'Poppins', sans-serif;
+    transition: all 0.3s;
+  }
+
+  .logout-btn:hover {
+    background: rgba(255, 255, 255, 0.2);
+    border-color: rgba(255, 255, 255, 0.3);
   }
 
   /* Desktop - 1024px and above */
