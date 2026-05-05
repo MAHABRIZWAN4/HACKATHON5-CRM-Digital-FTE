@@ -19,6 +19,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # Create non-root user
 RUN useradd -m -u 1000 user
 
+# Create logs directory with proper ownership
+RUN mkdir -p logs && chown -R user:user logs
+
 # Copy requirements first for better caching
 COPY --chown=user:user requirements.txt .
 
@@ -34,9 +37,6 @@ RUN pip install --no-cache-dir --user -r requirements.txt
 
 # Copy application code
 COPY --chown=user:user app/ ./app/
-
-# Create logs directory
-RUN mkdir -p logs
 
 # Expose port
 EXPOSE 7860
