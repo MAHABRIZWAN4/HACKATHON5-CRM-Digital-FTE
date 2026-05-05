@@ -16,21 +16,11 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     postgresql-client \
     && rm -rf /var/lib/apt/lists/*
 
-# Copy requirements first for better caching
-COPY requirements.txt .
-
 # Create non-root user
 RUN useradd -m -u 1000 user
 
-# Install Python dependencies
-RUN pip install --no-cache-dir --user -r requirements.txt
-
-# Copy application code
-COPY app/ ./app/
-COPY schema.sql .
-
-# Create logs directory
-RUN mkdir -p logs
+# Copy requirements first for better caching
+COPY --chown=user:user requirements.txt .
 
 # Switch to non-root user
 USER user
@@ -38,6 +28,16 @@ USER user
 # Set user environment variables
 ENV HOME=/home/user
 ENV PATH=/home/user/.local/bin:$PATH
+
+# Install Python dependencies as user
+RUN pip install --no-cache-dir --user -r requirements.txt
+
+# Copy application code
+COPY --chown=user:user app/ ./app/
+COPY --chown=user:user schema.sql .
+
+# Create logs directory
+RUN mkdir -p logs
 
 # Expose port
 EXPOSE 7860
