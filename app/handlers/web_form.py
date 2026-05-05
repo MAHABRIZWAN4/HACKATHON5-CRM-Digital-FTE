@@ -1,5 +1,6 @@
 """Web form intake handler."""
 
+import os
 import logging
 from typing import Dict, Any
 from datetime import datetime
@@ -34,6 +35,19 @@ class WebFormHandler:
         Returns:
             Dict with status, ticket_id, and message
         """
+        disable_db = os.getenv("DISABLE_DB", "false").lower() == "true"
+
+        if disable_db:
+            logger.info(f"Demo mode: Processing web form from {form_data.email}")
+            return {
+                "status": "success",
+                "channel": "web_form",
+                "ticket_id": f"demo-{form_data.email.split('@')[0]}-{datetime.now().strftime('%Y%m%d%H%M%S')}",
+                "message": "Demo mode: Request received successfully",
+                "agent_response": "Thank you for your inquiry. In demo mode, your request has been received but not saved to a database.",
+                "demo_mode": True
+            }
+
         try:
             logger.info(f"Processing web form submission from: {form_data.email}")
 

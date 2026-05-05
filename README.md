@@ -220,6 +220,8 @@ python scripts/gmail_auth.py
 
 ## 🚀 Running the Project
 
+### Option 1: Local Development (Full Features)
+
 ### Start Backend (Port 8001)
 ```bash
 # From project root
@@ -238,6 +240,31 @@ npm run dev
 - **Dashboard**: http://localhost:3000/dashboard
 - **API Docs**: http://localhost:8001/docs
 - **Health Check**: http://localhost:8001/health
+
+### Option 2: Hugging Face Spaces (Demo Mode)
+
+Deploy to Hugging Face Spaces without database:
+
+1. **Create a new Space** on [Hugging Face](https://huggingface.co/spaces)
+2. **Select Docker SDK** and set app_port to 7860
+3. **Push your code** to the Space repository
+4. **Set environment variables** in Space settings:
+   - `DISABLE_DB=true` (already set in Dockerfile)
+   - `GROQ_API_KEY=your_groq_api_key` (required for AI features)
+   - `DASHBOARD_PASSWORD=your_password` (optional)
+
+The app will run in demo mode with:
+- ✅ Health check endpoint working
+- ✅ API documentation accessible
+- ✅ Demo escalation data in dashboard
+- ⚠️ No persistent storage (data not saved)
+- ⚠️ Gmail/WhatsApp webhooks return demo responses
+
+**Demo Mode Features:**
+- All endpoints return success responses
+- Dashboard shows sample escalated tickets
+- Perfect for showcasing the UI and API structure
+- No database or external services required
 
 ## 🧪 Testing
 

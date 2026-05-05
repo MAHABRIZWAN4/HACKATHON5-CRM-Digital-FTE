@@ -1,5 +1,6 @@
 """FastAPI application entry point."""
 
+import os
 import logging
 import asyncio
 from contextlib import asynccontextmanager
@@ -26,26 +27,33 @@ async def lifespan(app: FastAPI):
     # Startup
     logger.info("Starting application...")
 
-    try:
-        # Initialize database
-        db_config = DatabaseConfig.from_env()
-        await init_db(db_config)
-        logger.info("Database initialized")
-    except Exception as e:
-        logger.error(f"Failed to initialize database: {e}")
-        raise
+    # Check if database should be disabled (for Hugging Face Spaces)
+    disable_db = os.getenv("DISABLE_DB", "false").lower() == "true"
+
+    if not disable_db:
+        try:
+            # Initialize database
+            db_config = DatabaseConfig.from_env()
+            await init_db(db_config)
+            logger.info("Database initialized")
+        except Exception as e:
+            logger.error(f"Failed to initialize database: {e}")
+            logger.warning("Running in demo mode without database")
+    else:
+        logger.info("Database disabled - running in demo mode")
 
     # Start Gmail polling as background task
     gmail_task = None
-    try:
-        from app.handlers.gmail import gmail_handler
-        if gmail_handler.config.polling_enabled:
-            gmail_task = asyncio.create_task(gmail_handler.start_polling())
-            logger.info("Gmail polling started")
-        else:
-            logger.info("Gmail polling disabled (set GMAIL_POLLING_ENABLED=true to enable)")
-    except Exception as e:
-        logger.warning(f"Could not start Gmail polling: {e}")
+    if not disable_db:
+        try:
+            from app.handlers.gmail import gmail_handler
+            if gmail_handler.config.polling_enabled:
+                gmail_task = asyncio.create_task(gmail_handler.start_polling())
+                logger.info("Gmail polling started")
+            else:
+                logger.info("Gmail polling disabled (set GMAIL_POLLING_ENABLED=true to enable)")
+        except Exception as e:
+            logger.warning(f"Could not start Gmail polling: {e}")
 
     yield
 
@@ -66,8 +74,9 @@ async def lifespan(app: FastAPI):
         except Exception as e:
             logger.warning(f"Error stopping Gmail polling: {e}")
 
-    await close_db()
-    logger.info("Database closed")
+    if not disable_db:
+        await close_db()
+        logger.info("Database closed")
 
 
 def create_app() -> FastAPI:

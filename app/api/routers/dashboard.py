@@ -1,9 +1,11 @@
 """Dashboard endpoint for escalated tickets."""
 
+import os
 from fastapi import APIRouter, status
 from fastapi.responses import JSONResponse
 import logging
 import json
+from datetime import datetime
 
 from app.db.connection import get_db_pool
 
@@ -15,6 +17,45 @@ router = APIRouter(prefix="/dashboard", tags=["dashboard"])
 @router.get("/escalations", status_code=status.HTTP_200_OK)
 async def get_escalations():
     """Get all escalated tickets."""
+    disable_db = os.getenv("DISABLE_DB", "false").lower() == "true"
+
+    if disable_db:
+        # Return demo data for Hugging Face Spaces
+        demo_escalations = [
+            {
+                "ticket_id": "demo-001",
+                "customer_email": "customer1@example.com",
+                "customer_name": "John Doe",
+                "title": "Billing Issue - Double Charge",
+                "reason": "Billing complaint detected",
+                "urgency": "high",
+                "status": "escalated",
+                "created_at": datetime.now().isoformat(),
+                "escalated_at": datetime.now().isoformat()
+            },
+            {
+                "ticket_id": "demo-002",
+                "customer_email": "customer2@example.com",
+                "customer_name": "Jane Smith",
+                "title": "Account Access Problem",
+                "reason": "Aggressive language detected",
+                "urgency": "medium",
+                "status": "escalated",
+                "created_at": datetime.now().isoformat(),
+                "escalated_at": datetime.now().isoformat()
+            }
+        ]
+
+        return JSONResponse(
+            status_code=status.HTTP_200_OK,
+            content={
+                "success": True,
+                "escalations": demo_escalations,
+                "count": len(demo_escalations),
+                "demo_mode": True
+            }
+        )
+
     try:
         db_pool = get_db_pool()
 
@@ -85,6 +126,19 @@ async def get_escalations():
 @router.post("/escalations/{ticket_id}/resolve", status_code=status.HTTP_200_OK)
 async def resolve_escalation(ticket_id: str):
     """Mark an escalated ticket as resolved."""
+    disable_db = os.getenv("DISABLE_DB", "false").lower() == "true"
+
+    if disable_db:
+        return JSONResponse(
+            status_code=status.HTTP_200_OK,
+            content={
+                "success": True,
+                "ticket_id": ticket_id,
+                "message": "Demo mode: Ticket marked as resolved (not saved)",
+                "demo_mode": True
+            }
+        )
+
     try:
         db_pool = get_db_pool()
 

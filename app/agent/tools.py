@@ -80,6 +80,36 @@ async def search_knowledge_base(query: str, max_results: int = 5) -> Dict[str, A
     Returns:
         Dict with search results
     """
+    disable_db = os.getenv("DISABLE_DB", "false").lower() == "true"
+
+    if disable_db:
+        # Return demo knowledge base results
+        demo_results = [
+            {
+                "id": "demo-kb-1",
+                "title": "Getting Started Guide",
+                "content": "Welcome to our platform! Here's how to get started with your account...",
+                "category": "general",
+                "relevance": 0.95
+            },
+            {
+                "id": "demo-kb-2",
+                "title": "Billing and Payments",
+                "content": "Information about billing cycles, payment methods, and invoices...",
+                "category": "billing",
+                "relevance": 0.85
+            }
+        ]
+
+        return {
+            "success": True,
+            "query": query,
+            "results": demo_results[:max_results],
+            "total_found": len(demo_results),
+            "search_method": "demo",
+            "demo_mode": True
+        }
+
     try:
         logger.info(f"Searching knowledge base: {query}")
 
@@ -195,6 +225,22 @@ async def create_ticket(
     Returns:
         Dict with ticket details
     """
+    disable_db = os.getenv("DISABLE_DB", "false").lower() == "true"
+
+    if disable_db:
+        # Return demo ticket
+        demo_ticket_id = f"demo-ticket-{uuid.uuid4().hex[:8]}"
+        return {
+            "success": True,
+            "ticket_id": demo_ticket_id,
+            "customer_id": customer_id,
+            "priority": priority,
+            "channel": channel,
+            "status": "open",
+            "created_at": datetime.now(timezone.utc).isoformat(),
+            "demo_mode": True
+        }
+
     try:
         logger.info(f"Creating ticket for customer: {customer_id}")
 
@@ -380,6 +426,21 @@ async def escalate_to_human(
     Returns:
         Dict with escalation details
     """
+    disable_db = os.getenv("DISABLE_DB", "false").lower() == "true"
+
+    if disable_db:
+        logger.info(f"Demo mode: Escalating ticket {ticket_id}")
+        return {
+            "success": True,
+            "ticket_id": ticket_id,
+            "escalated": True,
+            "reason": reason,
+            "urgency": urgency,
+            "escalated_at": datetime.now(timezone.utc).isoformat(),
+            "message": "Demo mode: Ticket escalation recorded (not saved to database)",
+            "demo_mode": True
+        }
+
     try:
         logger.info(f"Escalating ticket {ticket_id}: {reason}")
 
@@ -439,7 +500,6 @@ async def escalate_to_human(
                 logger.info(f"Ticket {ticket_id} marked as escalated in database")
 
         # Send email notification to support team
-        import os
         support_email = os.getenv("SUPPORT_EMAIL")
 
         if support_email:
@@ -500,6 +560,22 @@ async def send_response(
     Returns:
         Dict with send status
     """
+    disable_db = os.getenv("DISABLE_DB", "false").lower() == "true"
+
+    if disable_db:
+        logger.info(f"Demo mode: Sending response for ticket {ticket_id}")
+        formatted_message = ResponseFormatter.format_response(message, channel)
+        return {
+            "success": True,
+            "ticket_id": ticket_id,
+            "channel": channel,
+            "message_sent": True,
+            "formatted_message": formatted_message,
+            "sent_at": datetime.now(timezone.utc).isoformat(),
+            "recipient": "demo@example.com",
+            "demo_mode": True
+        }
+
     try:
         logger.info(f"Sending response for ticket {ticket_id} via {channel}")
 

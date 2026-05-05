@@ -1,5 +1,6 @@
 """Webhook endpoints for Gmail and WhatsApp."""
 
+import os
 from fastapi import APIRouter, Request, Header, status
 from fastapi.responses import JSONResponse
 from typing import Optional
@@ -16,6 +17,19 @@ router = APIRouter(prefix="/webhooks", tags=["webhooks"])
 @router.post("/gmail", status_code=status.HTTP_200_OK)
 async def gmail_webhook(request: Request):
     """Handle incoming Gmail webhook events."""
+    disable_db = os.getenv("DISABLE_DB", "false").lower() == "true"
+
+    if disable_db:
+        return JSONResponse(
+            status_code=status.HTTP_200_OK,
+            content={
+                "status": "success",
+                "channel": "gmail",
+                "message": "Demo mode: Webhook received but not processed",
+                "demo_mode": True
+            }
+        )
+
     try:
         body = await request.json()
         result = await gmail_handler.process_webhook(body)
@@ -42,6 +56,19 @@ async def whatsapp_webhook(
     x_twilio_signature: Optional[str] = Header(None)
 ):
     """Handle incoming WhatsApp webhook events."""
+    disable_db = os.getenv("DISABLE_DB", "false").lower() == "true"
+
+    if disable_db:
+        return JSONResponse(
+            status_code=status.HTTP_200_OK,
+            content={
+                "status": "success",
+                "channel": "whatsapp",
+                "message": "Demo mode: Webhook received but not processed",
+                "demo_mode": True
+            }
+        )
+
     try:
         # Get form data (Twilio sends form-encoded data)
         body = await request.form()
