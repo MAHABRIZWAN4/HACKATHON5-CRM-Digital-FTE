@@ -1,3 +1,13 @@
+---
+title: Customer Success Digital FTE
+emoji: 🎯
+colorFrom: blue
+colorTo: purple
+sdk: docker
+app_port: 7860
+pinned: false
+---
+
 # Customer Success Digital FTE
 
 An AI-powered customer success platform that handles support tickets across multiple channels (Web Form, Gmail, WhatsApp) with intelligent routing, escalation, and automated responses.
