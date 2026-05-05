@@ -41,9 +41,9 @@ RUN mkdir -p logs
 # Expose port
 EXPOSE 7860
 
-# Health check
+# Health check using httpx (already in requirements.txt)
 HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
-    CMD python -c "import requests; requests.get('http://localhost:7860/health')" || exit 1
+    CMD python -c "import httpx; httpx.get('http://localhost:7860/health', timeout=5.0)" || exit 1
 
 # Run FastAPI application
 CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "7860"]
