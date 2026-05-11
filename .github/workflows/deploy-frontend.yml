@@ -22,15 +22,27 @@ jobs:
           HF_USERNAME: ${{ secrets.HF_USERNAME }}
           HF_FRONTEND_SPACE_NAME: ${{ secrets.HF_FRONTEND_SPACE_NAME }}
         run: |
-          cd frontend
-          git config user.email "action@github.com"
-          git config user.name "GitHub Action"
+          # Configure git
+          git config --global user.email "action@github.com"
+          git config --global user.name "GitHub Action"
 
-          # Initialize a new git repo in frontend directory
-          git init
+          # Clone the Hugging Face Space repo
+          git clone https://$HF_USERNAME:$HF_TOKEN@huggingface.co/spaces/$HF_USERNAME/$HF_FRONTEND_SPACE_NAME hf-space
+
+          # Copy frontend files to the cloned repo
+          cd hf-space
+
+          # Remove old files (except .git)
+          find . -mindepth 1 -maxdepth 1 ! -name '.git' -exec rm -rf {} +
+
+          # Copy all frontend files
+          cp -r ../frontend/* .
+          cp ../frontend/.dockerignore . 2>/dev/null || true
+          cp ../frontend/.gitignore . 2>/dev/null || true
+
+          # Add all files and commit
           git add .
-          git commit -m "Deploy frontend to Hugging Face Spaces"
+          git commit -m "Deploy frontend from GitHub Actions" || echo "No changes to commit"
 
-          # Push to Hugging Face Spaces
-          git remote add hf https://$HF_USERNAME:$HF_TOKEN@huggingface.co/spaces/$HF_USERNAME/$HF_FRONTEND_SPACE_NAME
-          git push hf main --force
+          # Push to Hugging Face
+          git push origin main
