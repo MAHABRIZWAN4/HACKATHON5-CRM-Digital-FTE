@@ -41,5 +41,6 @@ npm run dev
 ```
 
 The application will be available at http://localhost:3000
-# Deployment trigger
-# Rebuild trigger - Mon May 11 10:31:29 PST 2026
+
+---
+**Last Updated**: 2026-05-11 - Force rebuild with environment variable
