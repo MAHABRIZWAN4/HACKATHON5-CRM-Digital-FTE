@@ -2,6 +2,9 @@
 FROM node:20-alpine AS builder
 WORKDIR /app
 
+# Build timestamp to force rebuild
+ENV BUILD_DATE=2026-05-11T10:45:00Z
+
 # Install dependencies
 COPY package.json package-lock.json ./
 RUN npm ci
