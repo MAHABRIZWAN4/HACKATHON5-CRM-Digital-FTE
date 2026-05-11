@@ -2,8 +2,12 @@
 FROM node:20-alpine AS builder
 WORKDIR /app
 
+# Accept build argument for API URL
+ARG NEXT_PUBLIC_API_URL
+ENV NEXT_PUBLIC_API_URL=$NEXT_PUBLIC_API_URL
+
 # Build timestamp to force rebuild
-ENV BUILD_DATE=2026-05-11T10:45:00Z
+ENV BUILD_DATE=2026-05-11T11:30:00Z
 
 # Install dependencies
 COPY package.json package-lock.json ./
