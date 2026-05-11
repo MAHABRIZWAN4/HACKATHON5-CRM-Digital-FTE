@@ -38,16 +38,17 @@ ENV HOSTNAME="0.0.0.0"
 RUN addgroup --system --gid 1001 nodejs && \
     adduser --system --uid 1001 nextjs
 
-# Create public directory if it doesn't exist
-RUN mkdir -p /app/public
+# Create necessary directories
+RUN mkdir -p /app/public /app/.next
 
-# Copy necessary files from builder
-COPY --from=builder /app/public ./public
-COPY --from=builder /app/.next/standalone ./
-COPY --from=builder /app/.next/static ./.next/static
+# Copy public folder (if exists)
+COPY --from=builder --chown=nextjs:nodejs /app/public ./public
 
-# Set correct permissions
-RUN chown -R nextjs:nodejs /app
+# Copy standalone output
+COPY --from=builder --chown=nextjs:nodejs /app/.next/standalone ./
+
+# Copy static files (if exists)
+COPY --from=builder --chown=nextjs:nodejs /app/.next/static ./.next/static
 
 # Switch to non-root user
 USER nextjs
