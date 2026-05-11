@@ -1,0 +1,36 @@
+name: Deploy Frontend to Hugging Face Spaces
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'frontend/**'
+      - '.github/workflows/deploy-frontend.yml'
+
+jobs:
+  deploy-frontend:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+        with:
+          fetch-depth: 0
+          lfs: true
+
+      - name: Push Frontend to HF Spaces
+        env:
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
+          HF_USERNAME: ${{ secrets.HF_USERNAME }}
+          HF_FRONTEND_SPACE_NAME: ${{ secrets.HF_FRONTEND_SPACE_NAME }}
+        run: |
+          cd frontend
+          git config user.email "action@github.com"
+          git config user.name "GitHub Action"
+
+          # Initialize a new git repo in frontend directory
+          git init
+          git add .
+          git commit -m "Deploy frontend to Hugging Face Spaces"
+
+          # Push to Hugging Face Spaces
+          git remote add hf https://$HF_USERNAME:$HF_TOKEN@huggingface.co/spaces/$HF_USERNAME/$HF_FRONTEND_SPACE_NAME
+          git push hf main --force

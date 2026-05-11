@@ -2,6 +2,8 @@
 
 import { useState, useEffect } from 'react';
 
+const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8001';
+
 interface Escalation {
   ticket_id: string;
   customer_email: string;
@@ -62,7 +64,7 @@ export default function Dashboard() {
     if (!isAuthenticated) return;
 
     try {
-      const response = await fetch('http://localhost:8001/dashboard/escalations');
+      const response = await fetch(`${API_URL}/dashboard/escalations`);
       const data = await response.json();
 
       if (data.success) {
@@ -72,7 +74,7 @@ export default function Dashboard() {
         setError(data.error || 'Failed to fetch escalations');
       }
     } catch (err) {
-      setError('Network error. Please check if the API server is running on port 8001.');
+      setError('Network error. Please check if the API server is running.');
     } finally {
       setLoading(false);
     }
@@ -89,7 +91,7 @@ export default function Dashboard() {
   const handleResolve = async (ticketId: string) => {
     setResolvingId(ticketId);
     try {
-      const response = await fetch(`http://localhost:8001/dashboard/escalations/${ticketId}/resolve`, {
+      const response = await fetch(`${API_URL}/dashboard/escalations/${ticketId}/resolve`, {
         method: 'POST',
       });
       const data = await response.json();

@@ -2,6 +2,8 @@
 
 import { useState, useEffect, FormEvent, ChangeEvent, CSSProperties } from 'react';
 
+const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8001';
+
 interface FormData {
   name: string;
   email: string;
@@ -57,7 +59,7 @@ export default function SupportForm() {
     setErrorMessage('');
 
     try {
-      const response = await fetch('http://localhost:8001/support', {
+      const response = await fetch(`${API_URL}/support`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -88,7 +90,7 @@ export default function SupportForm() {
       }
     } catch (error) {
       setStatus('error');
-      setErrorMessage('Network error. Please check if the API server is running on port 8001.');
+      setErrorMessage('Network error. Please check if the API server is running.');
     }
   };
 
