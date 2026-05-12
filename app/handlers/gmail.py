@@ -29,6 +29,30 @@ class GmailConfig:
         self.polling_interval = int(os.getenv("GMAIL_POLLING_INTERVAL", "60"))  # seconds
         self.polling_enabled = os.getenv("GMAIL_POLLING_ENABLED", "false").lower() == "true"
 
+        # Decode base64 credentials from environment variables if present
+        self._setup_credentials_from_env()
+
+    def _setup_credentials_from_env(self) -> None:
+        """Create credential files from base64 environment variables if they exist."""
+        try:
+            # Decode credentials.json from base64 env var
+            creds_base64 = os.getenv("GMAIL_CREDENTIALS_BASE64")
+            if creds_base64:
+                creds_json = base64.b64decode(creds_base64).decode('utf-8')
+                with open(self.credentials_file, 'w') as f:
+                    f.write(creds_json)
+                logger.info(f"Created credentials file from environment variable")
+
+            # Decode token.json from base64 env var
+            token_base64 = os.getenv("GMAIL_TOKEN_BASE64")
+            if token_base64:
+                token_json = base64.b64decode(token_base64).decode('utf-8')
+                with open(self.token_file, 'w') as f:
+                    f.write(token_json)
+                logger.info(f"Created token file from environment variable")
+        except Exception as e:
+            logger.warning(f"Could not setup credentials from environment: {e}")
+
     def validate(self) -> None:
         """Validate Gmail configuration."""
         if not self.gmail_address:
