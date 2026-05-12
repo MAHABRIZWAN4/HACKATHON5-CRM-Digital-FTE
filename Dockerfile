@@ -9,7 +9,7 @@ ENV PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
     PIP_NO_CACHE_DIR=1 \
     PIP_DISABLE_PIP_VERSION_CHECK=1 \
-    DISABLE_DB=true
+    BUILD_TIMESTAMP=2026-05-12T05:50:00Z
 
 # Install system dependencies
 RUN apt-get update && apt-get install -y --no-install-recommends \
