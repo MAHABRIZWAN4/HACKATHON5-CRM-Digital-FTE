@@ -22,6 +22,9 @@ RUN useradd -m -u 1000 user
 # Create logs directory with proper ownership
 RUN mkdir -p logs && chown -R user:user logs
 
+# Create placeholder files for Gmail credentials (will be replaced via web upload)
+RUN touch credentials.json token.json && chown user:user credentials.json token.json
+
 # Copy requirements first for better caching
 COPY --chown=user:user requirements.txt .
 
@@ -37,10 +40,6 @@ RUN pip install --no-cache-dir --user -r requirements.txt
 
 # Copy application code
 COPY --chown=user:user app/ ./app/
-
-# Copy Gmail credentials if they exist (optional)
-# These files should be uploaded directly to Hugging Face Space
-RUN touch /app/credentials.json /app/token.json && chown user:user /app/credentials.json /app/token.json
 
 # Expose port
 EXPOSE 7860
