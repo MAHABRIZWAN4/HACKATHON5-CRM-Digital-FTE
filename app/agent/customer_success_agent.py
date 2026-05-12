@@ -32,7 +32,8 @@ class CustomerSuccessAgent:
             api_key=self.api_key,
             base_url=self.base_url
         )
-        self.model = os.getenv("GROQ_MODEL", "llama-3.3-70b-versatile")
+        # Use llama-3.1-70b which has better function calling support
+        self.model = os.getenv("GROQ_MODEL", "llama-3.1-70b-versatile")
         self.agent_name = "Customer Success FTE"
 
         # Tool definitions for OpenAI function calling
@@ -220,16 +221,18 @@ class CustomerSuccessAgent:
                         messages=messages,
                         tools=self.tools,
                         tool_choice="auto",
-                        temperature=0.7
+                        temperature=0.7,
+                        max_tokens=4096,
+                        parallel_tool_calls=False  # Force sequential for better Groq compatibility
                     )
 
                     assistant_message = response.choices[0].message
 
                 except Exception as api_error:
-                    # Handle Groq 400 errors - fallback to simple completion
-                    error_str = str(api_error)
-                    if "400" in error_str or "tool_use_failed" in error_str.lower():
-                        logger.warning(f"Groq API error (likely 400), using fallback mode: {api_error}")
+                    # Handle Groq errors - fallback to simple completion
+                    error_str = str(api_error).lower()
+                    if any(x in error_str for x in ["400", "tool_use_failed", "413", "rate_limit", "429"]):
+                        logger.warning(f"Groq API error, using fallback mode: {api_error}")
                         return await self._fallback_response(customer_id, message, channel, customer_name)
                     else:
                         # Re-raise other errors
@@ -358,9 +361,23 @@ class CustomerSuccessAgent:
             ticket_id = ticket_result.get("ticket_id")
             logger.info(f"Fallback: Created ticket {ticket_id}")
 
+            # Search knowledge base for relevant info
+            kb_context = ""
+            try:
+                kb_results = await search_knowledge_base(query=message[:200], max_results=3)
+                if kb_results.get("success") and kb_results.get("results"):
+                    kb_context = "\n\nRelevant information:\n"
+                    for result in kb_results["results"][:2]:
+                        kb_context += f"- {result['title']}: {result['content'][:150]}...\n"
+                    logger.info(f"Fallback: Found {len(kb_results['results'])} KB articles")
+            except Exception as kb_error:
+                logger.warning(f"KB search failed in fallback: {kb_error}")
+
             # Generate intelligent response using Groq simple completion (no tools)
             try:
-                response_message = await self._generate_groq_fallback_response(message, customer_name, channel)
+                response_message = await self._generate_groq_fallback_response(
+                    message, customer_name, channel, kb_context
+                )
             except Exception as groq_error:
                 logger.warning(f"Groq fallback failed, using simple response: {groq_error}")
                 response_message = self._generate_fallback_message(message, customer_name, channel)
@@ -399,7 +416,8 @@ class CustomerSuccessAgent:
         self,
         message: str,
         customer_name: Optional[str],
-        channel: str
+        channel: str,
+        kb_context: str = ""
     ) -> str:
         """Generate intelligent response using Groq simple completion (no tools)."""
         name = customer_name or "there"
@@ -408,10 +426,10 @@ class CustomerSuccessAgent:
         prompt = f"""You are a helpful customer support agent. A customer named {name} sent this message via {channel}:
 
 "{message}"
-
+{kb_context}
 Generate a brief, helpful response that:
 - Acknowledges their issue
-- Provides helpful guidance if possible
+- Provides helpful guidance based on the information above
 - Assures them their ticket has been created
 - Is professional and friendly
 - Is 2-3 sentences maximum
