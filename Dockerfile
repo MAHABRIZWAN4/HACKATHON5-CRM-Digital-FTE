@@ -38,6 +38,10 @@ RUN pip install --no-cache-dir --user -r requirements.txt
 # Copy application code
 COPY --chown=user:user app/ ./app/
 
+# Copy Gmail credentials (if they exist)
+COPY --chown=user:user credentials.json ./credentials.json
+COPY --chown=user:user token.json ./token.json
+
 # Expose port
 EXPOSE 7860
 
