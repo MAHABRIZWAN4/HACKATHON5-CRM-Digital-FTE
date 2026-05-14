@@ -170,6 +170,31 @@ class GmailHandler:
                         ).execute()
                         continue
 
+                    # Check if we've already processed this message (check database)
+                    db_pool = get_db_pool()
+                    already_processed = await db_pool.fetchval(
+                        """
+                        SELECT EXISTS(
+                            SELECT 1 FROM messages
+                            WHERE sender_id = $1
+                            AND content = $2
+                            AND created_at > NOW() - INTERVAL '1 hour'
+                        )
+                        """,
+                        email_data['from_email'],
+                        email_data['body']
+                    )
+
+                    if already_processed:
+                        logger.info(f"Skipping already processed email from {email_data['from_email']}: {msg['id']}")
+                        # Mark as read to avoid reprocessing
+                        service.users().messages().modify(
+                            userId='me',
+                            id=msg['id'],
+                            body={'removeLabelIds': ['UNREAD']}
+                        ).execute()
+                        continue
+
                     # Process through agent
                     from app.agent.customer_success_agent import get_agent
                     agent = get_agent()
