@@ -159,6 +159,17 @@ class GmailHandler:
                     # Parse email
                     email_data = self._parse_gmail_message(message)
 
+                    # CRITICAL: Skip emails from our own address to prevent infinite loop
+                    if email_data['from_email'].lower() == self.config.gmail_address.lower():
+                        logger.info(f"Skipping email from self: {msg['id']}")
+                        # Mark as read to avoid processing again
+                        service.users().messages().modify(
+                            userId='me',
+                            id=msg['id'],
+                            body={'removeLabelIds': ['UNREAD']}
+                        ).execute()
+                        continue
+
                     # Process through agent
                     from app.agent.customer_success_agent import get_agent
                     agent = get_agent()

@@ -32,8 +32,8 @@ class CustomerSuccessAgent:
             api_key=self.api_key,
             base_url=self.base_url
         )
-        # Use llama-3.1-70b which has better function calling support
-        self.model = os.getenv("GROQ_MODEL", "llama-3.1-70b-versatile")
+        # Use llama-3.3-70b-versatile (3.1 was decommissioned)
+        self.model = os.getenv("GROQ_MODEL", "llama-3.3-70b-versatile")
         self.agent_name = "Customer Success FTE"
 
         # Tool definitions for OpenAI function calling
