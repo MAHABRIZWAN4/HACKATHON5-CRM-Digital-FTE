@@ -108,6 +108,19 @@ class GmailHandler:
                  'https://www.googleapis.com/auth/gmail.modify']
             )
 
+            # Refresh token if expired
+            if creds and creds.expired and creds.refresh_token:
+                from google.auth.transport.requests import Request
+                try:
+                    creds.refresh(Request())
+                    logger.info("Gmail token refreshed successfully")
+                    # Save refreshed token
+                    with open(self.config.token_file, 'w') as token:
+                        token.write(creds.to_json())
+                except Exception as refresh_error:
+                    logger.error(f"Token refresh failed: {refresh_error}")
+                    # Continue with expired token - will fail but won't crash
+
             # Build Gmail service
             self._service = build('gmail', 'v1', credentials=creds)
             logger.info("Gmail API service initialized successfully")
