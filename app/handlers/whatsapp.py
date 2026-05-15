@@ -119,8 +119,9 @@ class WhatsAppHandler:
         try:
             logger.info(f"Processing WhatsApp webhook: {webhook_data}")
 
-            # Validate signature if provided
-            if signature and url:
+            # Validate signature if provided (skip in development/testing)
+            skip_validation = os.getenv("SKIP_TWILIO_VALIDATION", "false").lower() == "true"
+            if signature and url and not skip_validation:
                 if not self.validate_signature(signature, url, webhook_data):
                     logger.warning("Invalid Twilio signature")
                     raise ValueError("Invalid webhook signature")
