@@ -506,6 +506,12 @@ Original message:
         Returns:
             True if sent successfully
         """
+        # Check if Gmail is configured
+        gmail_enabled = os.getenv("GMAIL_ENABLED", "true").lower() == "true"
+        if not gmail_enabled:
+            logger.info(f"Gmail disabled - skipping email to {to_email}")
+            return False
+
         try:
             self.config.validate()
             service = self._get_gmail_service()
@@ -535,10 +541,10 @@ Original message:
             return True
 
         except HttpError as e:
-            logger.error(f"Gmail API error sending reply: {e}", exc_info=True)
+            logger.warning(f"Gmail API error sending reply (continuing without email): {e}")
             return False
         except Exception as e:
-            logger.error(f"Error sending Gmail reply: {e}", exc_info=True)
+            logger.warning(f"Could not send Gmail reply (continuing without email): {e}")
             return False
 
 
